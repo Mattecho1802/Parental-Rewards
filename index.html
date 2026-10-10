@@ -228,7 +228,6 @@
     }
 
     .span-5 { grid-column: span 5; }
-    .span-6 { grid-column: span 6; }
     .span-7 { grid-column: span 7; }
     .span-12 { grid-column: span 12; }
 
@@ -275,6 +274,10 @@
       background: var(--blue);
       color: white;
       font-weight: 800;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .btn:hover { background: var(--blue-dark); }
@@ -360,7 +363,7 @@
       main { padding: 22px; }
       .topbar { flex-direction: column; }
       .score-card { width: 100%; }
-      .span-5, .span-6, .span-7 { grid-column: span 12; }
+      .span-5, .span-7 { grid-column: span 12; }
     }
   </style>
 </head>
@@ -390,8 +393,8 @@
           <label>Parent email
             <input id="createParentEmail" type="email" required placeholder="parent@example.com" />
           </label>
-          <label>Password
-            <input id="createParentPassword" type="password" required minlength="4" placeholder="At least 4 characters" />
+          <label>Parent passcode
+            <input id="createParentPasscode" type="password" required minlength="4" placeholder="At least 4 characters" />
           </label>
           <label>Family name
             <input id="createFamilyName" required placeholder="The Patel family" />
@@ -404,8 +407,8 @@
           <label>Parent email
             <input id="parentSignInEmail" type="email" required placeholder="parent@example.com" />
           </label>
-          <label>Password
-            <input id="parentSignInPassword" type="password" required />
+          <label>Parent passcode
+            <input id="parentSignInPasscode" type="password" required />
           </label>
           <button class="btn" type="submit">Sign in as parent</button>
           <p id="parentError" class="error"></p>
@@ -547,30 +550,26 @@
     </main>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
-    const storageKey = 'parentalRewardsApp';
+    const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xdGhvaHJiZ3JkYm5tem15dGFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MzU0NTQsImV4cCI6MjA5OTAxMTQ1NH0.NgEgHEFtgXy7YCzgZQsLHMSSPfEemoBX-yihGBLsTsU';
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const sessionKey = 'parentalRewardsSession';
     const $ = (selector) => document.querySelector(selector);
     const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
-    const state = loadState();
-    let session = JSON.parse(localStorage.getItem('parentalRewardsSession') || 'null');
+    let session = JSON.parse(localStorage.getItem(sessionKey) || 'null');
     let activeTab = session?.role === 'child' ? 'challenges' : 'family';
-
-    function loadState() {
-      const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
-      return saved || { parents: [] };
-    }
-
-    function saveState() {
-      localStorage.setItem(storageKey, JSON.stringify(state));
-    }
+    let family = null;
+    let loading = false;
 
     function saveSession() {
-      localStorage.setItem('parentalRewardsSession', JSON.stringify(session));
+      localStorage.setItem(sessionKey, JSON.stringify(session));
     }
 
-    function id() {
-      return Date.now() + Math.floor(Math.random() * 1000);
+    function randomCode() {
+      return Math.random().toString(36).slice(2, 8).toUpperCase();
     }
 
     function nextDate(days) {
@@ -579,33 +578,64 @@
       return date.toISOString().slice(0, 10);
     }
 
-    function familyCode() {
-      return Math.random().toString(36).slice(2, 8).toUpperCase();
-    }
-
-    function currentParent() {
-      return state.parents.find((parent) => parent.id === session?.parentId);
+    function childName(childId) {
+      return family?.children.find((child) => child.id === childId)?.name || 'Child';
     }
 
     function activeChild() {
-      const parent = currentParent();
-      return parent?.children.find((child) => child.id === session?.childId);
+      return family?.children.find((child) => child.id === session?.childId);
     }
 
-    function childName(parent, childId) {
-      return parent.children.find((child) => child.id === Number(childId))?.name || 'Child';
+    function setMessage(id, message) {
+      const element = $(id);
+      if (element) element.textContent = message || '';
     }
 
-    function requestMessage(parent, request) {
-      const challenge = parent.challenges.find((item) => item.id === request.challengeId) || request.challengeSnapshot;
-      return `${childName(parent, request.childId)} has completed this challenge: ${challenge?.name || 'Challenge'}`;
+    function requestMessage(request) {
+      return childName(request.child_id) + ' has completed this challenge: ' + request.challenge_name;
     }
 
-    function requestEmailHref(parent, request) {
-      const message = requestMessage(parent, request);
-      const subject = `Challenge completed by ${childName(parent, request.childId)}`;
-      const body = `${message}\r\n\r\nPlease check it in Parental Rewards and approve the points if it is complete.`;
-      return `mailto:${encodeURIComponent(parent.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    function requestEmailHref(request) {
+      const message = requestMessage(request);
+      const subject = 'Challenge completed by ' + childName(request.child_id);
+      const body = message + '\r\n\r\nPlease check it in Parental Rewards and approve the points if it is complete.';
+      return 'mailto:' + encodeURIComponent(family.parent_email) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+    }
+
+    async function loadFamily(familyId) {
+      loading = true;
+      const { data: familyRow, error: familyError } = await db
+        .from('families')
+        .select('*')
+        .eq('id', familyId)
+        .single();
+
+      if (familyError || !familyRow) {
+        loading = false;
+        signOut();
+        return;
+      }
+
+      const [childrenRes, challengesRes, rewardsRes, requestsRes] = await Promise.all([
+        db.from('children').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
+        db.from('challenges').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
+        db.from('rewards').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
+        db.from('completion_requests').select('*').eq('family_id', familyId).order('created_at', { ascending: false })
+      ]);
+
+      family = {
+        ...familyRow,
+        children: childrenRes.data || [],
+        challenges: challengesRes.data || [],
+        rewards: rewardsRes.data || [],
+        requests: requestsRes.data || []
+      };
+      loading = false;
+    }
+
+    async function refreshAndRender() {
+      if (session?.familyId) await loadFamily(session.familyId);
+      render();
     }
 
     function setAuthTab(tab) {
@@ -616,7 +646,8 @@
 
     function signOut() {
       session = null;
-      localStorage.removeItem('parentalRewardsSession');
+      family = null;
+      localStorage.removeItem(sessionKey);
       activeTab = 'family';
       render();
     }
@@ -633,64 +664,64 @@
         return;
       }
 
-      const parent = currentParent();
-      if (!parent) {
-        signOut();
+      if (!family || loading) {
+        $('#authScreen').classList.add('hidden');
+        $('#appScreen').classList.remove('hidden');
+        $('#pageTitle').textContent = 'Loading...';
+        $('#pageSubtitle').textContent = 'Getting family data from Supabase.';
         return;
       }
-
-      if (session.role === 'child' && !activeChild()) {
-        signOut();
-        return;
-      }
-
-      $('#authScreen').classList.add('hidden');
-      $('#appScreen').classList.remove('hidden');
 
       const child = activeChild();
       const isParent = session.role === 'parent';
+      if (!isParent && !child) {
+        signOut();
+        return;
+      }
       if (!isParent && activeTab === 'family') activeTab = 'challenges';
 
+      $('#authScreen').classList.add('hidden');
+      $('#appScreen').classList.remove('hidden');
       $('#profileLabel').textContent = isParent ? 'Parent account' : 'Child account';
-      $('#profileName').textContent = isParent ? parent.name : child.name;
-      $('#profileDetail').textContent = isParent ? `Family code: ${parent.code}` : parent.familyName;
+      $('#profileName').textContent = isParent ? family.parent_name : child.name;
+      $('#profileDetail').textContent = isParent ? 'Family code: ' + family.family_code : family.family_name;
       $('#sidebarNote').textContent = isParent
         ? 'Give children the family code, their name, and their passcode so they can sign in.'
         : 'Finish challenges, request approval, and use points for rewards.';
 
-      $('#pageTitle').textContent = isParent ? `${parent.familyName} Dashboard` : `${child.name}'s Dashboard`;
+      $('#pageTitle').textContent = isParent ? family.family_name + ' Dashboard' : child.name + "'s Dashboard";
       $('#pageSubtitle').textContent = isParent
         ? 'Add children, create challenges, approve completed work, and manage rewards.'
         : 'View your challenges, request approval, and redeem available rewards.';
       $('#scoreLabel').textContent = isParent ? 'Family points' : 'My points';
       $('#scoreValue').textContent = isParent
-        ? parent.children.reduce((sum, kid) => sum + kid.points, 0)
+        ? family.children.reduce((sum, kid) => sum + kid.points, 0)
         : child.points;
 
       $$('.parent-only').forEach((item) => item.classList.toggle('hidden', !isParent));
-      $$('.tab').forEach((button) => button.classList.toggle('active', button.dataset.tab === activeTab));
+      $$('[data-tab]').forEach((button) => button.classList.toggle('active', button.dataset.tab === activeTab));
       $$('.tab-panel').forEach((panel) => panel.classList.toggle('hidden', panel.id !== activeTab));
 
-      renderChildren(parent);
-      renderChallengeSelect(parent);
-      renderChallenges(parent);
-      renderRewards(parent);
-      renderRequests(parent);
+      renderChildren();
+      renderChallengeSelect();
+      renderChallenges();
+      renderRewards();
+      renderRequests();
     }
 
-    function renderChildren(parent) {
+    function renderChildren() {
       const list = $('#childrenList');
-      if (!parent.children.length) {
+      if (!family.children.length) {
         list.innerHTML = '<div class="empty">No children added yet.</div>';
         return;
       }
 
-      list.innerHTML = parent.children.map((child) => `
+      list.innerHTML = family.children.map((child) => `
         <article class="item">
           <div class="item-header">
             <div>
               <div class="item-title">${child.name}</div>
-              <div class="meta">Signs in with family code ${parent.code} and their passcode.</div>
+              <div class="meta">Signs in with family code ${family.family_code} and their passcode.</div>
             </div>
             <span class="pill green">${child.points} points</span>
           </div>
@@ -698,18 +729,16 @@
       `).join('');
     }
 
-    function renderChallengeSelect(parent) {
-      const select = $('#challengeChild');
-      if (!select) return;
-      select.innerHTML = parent.children.map((child) => `<option value="${child.id}">${child.name}</option>`).join('');
+    function renderChallengeSelect() {
+      $('#challengeChild').innerHTML = family.children.map((child) => `<option value="${child.id}">${child.name}</option>`).join('');
     }
 
-    function renderChallenges(parent) {
+    function renderChallenges() {
       const list = $('#challengeList');
       const child = activeChild();
       const challenges = session.role === 'parent'
-        ? parent.challenges
-        : parent.challenges.filter((challenge) => challenge.childId === child.id);
+        ? family.challenges
+        : family.challenges.filter((challenge) => challenge.child_id === child.id);
 
       if (!challenges.length) {
         list.innerHTML = '<div class="empty">No active challenges yet.</div>';
@@ -717,17 +746,17 @@
       }
 
       list.innerHTML = challenges.map((challenge) => {
-        const waitingRequest = parent.requests.find((request) => request.challengeId === challenge.id && request.status === 'waiting');
+        const waitingRequest = family.requests.find((request) => request.challenge_id === challenge.id && request.status === 'waiting');
         const childAction = waitingRequest
-          ? `<button class="btn secondary" type="button" onclick="openRequestEmail(${waitingRequest.id})">Email parent again</button><span class="pill amber">Request sent</span>`
-          : `<button class="btn warning" type="button" onclick="sendCompletionRequest(${challenge.id})">I finished this</button>`;
-        const parentAction = `<button class="btn success" type="button" onclick="approveChallenge(${challenge.id})">Approve complete</button>`;
+          ? `<button class="btn secondary" type="button" onclick="openRequestEmail('${waitingRequest.id}')">Email parent again</button><span class="pill amber">Request sent</span>`
+          : `<button class="btn warning" type="button" onclick="sendCompletionRequest('${challenge.id}')">I finished this</button>`;
+        const parentAction = `<button class="btn success" type="button" onclick="approveChallenge('${challenge.id}')">Approve complete</button>`;
         return `
           <article class="item">
             <div class="item-header">
               <div>
                 <div class="item-title">${challenge.name}</div>
-                <div class="meta">For ${childName(parent, challenge.childId)}. ${challenge.details || ''}</div>
+                <div class="meta">For ${childName(challenge.child_id)}. ${challenge.details || ''}</div>
               </div>
               <span class="pill green">${challenge.points} points</span>
             </div>
@@ -737,41 +766,41 @@
       }).join('');
     }
 
-    function renderRewards(parent) {
+    function renderRewards() {
       const list = $('#rewardList');
-      if (!parent.rewards.length) {
+      if (!family.rewards.length) {
         list.innerHTML = '<div class="empty">No rewards created yet.</div>';
         return;
       }
 
       const child = activeChild();
-      list.innerHTML = parent.rewards.map((reward) => {
-        const remaining = reward.limit - reward.claimed;
-        const isAvailable = remaining > 0 && reward.until >= nextDate(0);
+      list.innerHTML = family.rewards.map((reward) => {
+        const remaining = reward.limit_count - reward.claimed_count;
+        const isAvailable = remaining > 0 && reward.available_until >= nextDate(0);
         const canClaim = session.role === 'child' && child.points >= reward.cost && isAvailable;
         return `
           <article class="item">
             <div class="item-header">
               <div>
                 <div class="item-title">${reward.name}</div>
-                <div class="meta">Available until ${reward.until}. ${remaining} of ${reward.limit} left.</div>
+                <div class="meta">Available until ${reward.available_until}. ${remaining} of ${reward.limit_count} left.</div>
               </div>
               <span class="pill">${reward.cost} points</span>
             </div>
             <div class="row">
-              ${session.role === 'child' ? `<button class="btn ${canClaim ? '' : 'secondary'}" type="button" ${canClaim ? '' : 'disabled'} onclick="claimReward(${reward.id})">Redeem</button>` : ''}
+              ${session.role === 'child' ? `<button class="btn ${canClaim ? '' : 'secondary'}" type="button" ${canClaim ? '' : 'disabled'} onclick="claimReward('${reward.id}')">Redeem</button>` : ''}
             </div>
           </article>
         `;
       }).join('');
     }
 
-    function renderRequests(parent) {
+    function renderRequests() {
       const list = $('#requestList');
       const child = activeChild();
       const requests = session.role === 'parent'
-        ? parent.requests
-        : parent.requests.filter((request) => request.childId === child.id);
+        ? family.requests
+        : family.requests.filter((request) => request.child_id === child.id);
 
       if (!requests.length) {
         list.innerHTML = '<div class="empty">No completion requests yet.</div>';
@@ -779,7 +808,7 @@
       }
 
       list.innerHTML = requests.map((request) => {
-        const message = requestMessage(parent, request);
+        const message = requestMessage(request);
         return `
           <article class="item">
             <div class="item-header">
@@ -787,194 +816,209 @@
                 <div class="item-title">${message}</div>
                 <div class="meta">Status: ${request.status}</div>
               </div>
-              <span class="pill amber">${request.emailSent ? 'Email opened' : 'Email draft'}</span>
+              <span class="pill amber">${request.email_sent ? 'Email opened' : 'Email draft'}</span>
             </div>
             <div class="email-preview">
-              <div><strong>To:</strong> ${parent.email}</div>
-              <div><strong>Subject:</strong> Challenge completed by ${childName(parent, request.childId)}</div>
+              <div><strong>To:</strong> ${family.parent_email}</div>
+              <div><strong>Subject:</strong> Challenge completed by ${childName(request.child_id)}</div>
               <div><strong>Message:</strong> ${message}</div>
             </div>
             <div class="row">
-              ${session.role === 'child' && request.status === 'waiting' ? `<button class="btn warning" type="button" onclick="openRequestEmail(${request.id})">Open email to parent</button>` : ''}
-              ${session.role === 'parent' && request.status === 'waiting' ? `<button class="btn success" type="button" onclick="approveChallenge(${request.challengeId})">Approve and add points</button>` : ''}
+              ${session.role === 'child' && request.status === 'waiting' ? `<button class="btn warning" type="button" onclick="openRequestEmail('${request.id}')">Open email to parent</button>` : ''}
+              ${session.role === 'parent' && request.status === 'waiting' ? `<button class="btn success" type="button" onclick="approveChallenge('${request.challenge_id}')">Approve and add points</button>` : ''}
             </div>
           </article>
         `;
       }).join('');
     }
 
-    function sendCompletionRequest(challengeId) {
-      const parent = currentParent();
-      const challenge = parent.challenges.find((item) => item.id === challengeId);
-      if (!challenge) return;
-      const existing = parent.requests.find((request) => request.challengeId === challengeId && request.status === 'waiting');
-      if (existing) {
-        openRequestEmail(existing.id);
-        return;
-      }
-      const request = {
-        id: id(),
-        childId: challenge.childId,
-        challengeId,
-        challengeSnapshot: { name: challenge.name, points: challenge.points },
-        status: 'waiting',
-        emailSent: false
-      };
-      parent.requests.push(request);
-      activeTab = 'requests';
-      saveState();
-      render();
-      openRequestEmail(request.id);
-    }
-
-    function openRequestEmail(requestId) {
-      const parent = currentParent();
-      const request = parent.requests.find((item) => item.id === requestId);
-      if (!request) return;
-      request.emailSent = true;
-      saveState();
-      window.location.href = requestEmailHref(parent, request);
-      render();
-    }
-
-    function approveChallenge(challengeId) {
-      const parent = currentParent();
-      const challenge = parent.challenges.find((item) => item.id === challengeId);
-      const child = parent.children.find((item) => item.id === challenge?.childId);
-      if (!challenge || !child) return;
-      child.points += challenge.points;
-      parent.requests.forEach((request) => {
-        if (request.challengeId === challengeId) request.status = 'approved';
-      });
-      parent.challenges = parent.challenges.filter((item) => item.id !== challengeId);
-      saveState();
-      render();
-    }
-
-    function claimReward(rewardId) {
-      const parent = currentParent();
-      const child = activeChild();
-      const reward = parent.rewards.find((item) => item.id === rewardId);
-      if (!reward || child.points < reward.cost || reward.claimed >= reward.limit) return;
-      child.points -= reward.cost;
-      reward.claimed += 1;
-      saveState();
-      render();
-    }
-
-    $('#createParentForm').addEventListener('submit', (event) => {
+    async function createParent(event) {
       event.preventDefault();
+      setMessage('#createError', '');
       const email = $('#createParentEmail').value.trim().toLowerCase();
-      if (state.parents.some((parent) => parent.email.toLowerCase() === email)) {
-        $('#createError').textContent = 'That parent email already has an account.';
+      const { data: existing } = await db.from('families').select('id').eq('parent_email', email).maybeSingle();
+      if (existing) {
+        setMessage('#createError', 'That parent email already has an account.');
         return;
       }
-      const parent = {
-        id: id(),
-        name: $('#createParentName').value.trim(),
-        email,
-        password: $('#createParentPassword').value,
-        familyName: $('#createFamilyName').value.trim(),
-        code: familyCode(),
-        children: [],
-        challenges: [],
-        rewards: [],
-        requests: []
-      };
-      state.parents.push(parent);
-      session = { role: 'parent', parentId: parent.id };
-      activeTab = 'family';
-      saveState();
-      saveSession();
-      render();
-    });
 
-    $('#parentSignInForm').addEventListener('submit', (event) => {
+      const { data, error } = await db.from('families').insert({
+        parent_name: $('#createParentName').value.trim(),
+        parent_email: email,
+        parent_passcode: $('#createParentPasscode').value,
+        family_name: $('#createFamilyName').value.trim(),
+        family_code: randomCode()
+      }).select().single();
+
+      if (error) {
+        setMessage('#createError', error.message);
+        return;
+      }
+
+      session = { role: 'parent', familyId: data.id };
+      activeTab = 'family';
+      saveSession();
+      await refreshAndRender();
+    }
+
+    async function parentSignIn(event) {
       event.preventDefault();
+      setMessage('#parentError', '');
       const email = $('#parentSignInEmail').value.trim().toLowerCase();
-      const parent = state.parents.find((item) => item.email.toLowerCase() === email && item.password === $('#parentSignInPassword').value);
-      if (!parent) {
-        $('#parentError').textContent = 'Parent email or password is not right.';
+      const { data, error } = await db
+        .from('families')
+        .select('*')
+        .eq('parent_email', email)
+        .eq('parent_passcode', $('#parentSignInPasscode').value)
+        .maybeSingle();
+
+      if (error || !data) {
+        setMessage('#parentError', 'Parent email or passcode is not right.');
         return;
       }
-      session = { role: 'parent', parentId: parent.id };
+
+      session = { role: 'parent', familyId: data.id };
       activeTab = 'family';
       saveSession();
-      render();
-    });
+      await refreshAndRender();
+    }
 
-    $('#childSignInForm').addEventListener('submit', (event) => {
+    async function childSignIn(event) {
       event.preventDefault();
+      setMessage('#childError', '');
       const code = $('#childFamilyCode').value.trim().toUpperCase();
-      const name = $('#childSignInName').value.trim().toLowerCase();
-      const passcode = $('#childSignInPasscode').value;
-      const parent = state.parents.find((item) => item.code === code);
-      const child = parent?.children.find((item) => item.name.toLowerCase() === name && item.passcode === passcode);
-      if (!parent || !child) {
-        $('#childError').textContent = 'Family code, child name, or passcode is not right.';
+      const name = $('#childSignInName').value.trim();
+      const { data: familyRow } = await db.from('families').select('*').eq('family_code', code).maybeSingle();
+      if (!familyRow) {
+        setMessage('#childError', 'Family code, child name, or passcode is not right.');
         return;
       }
-      session = { role: 'child', parentId: parent.id, childId: child.id };
+
+      const { data: children } = await db
+        .from('children')
+        .select('*')
+        .eq('family_id', familyRow.id)
+        .eq('passcode', $('#childSignInPasscode').value);
+      const child = (children || []).find((item) => item.name.toLowerCase() === name.toLowerCase());
+
+      if (!child) {
+        setMessage('#childError', 'Family code, child name, or passcode is not right.');
+        return;
+      }
+
+      session = { role: 'child', familyId: familyRow.id, childId: child.id };
       activeTab = 'challenges';
       saveSession();
-      render();
-    });
+      await refreshAndRender();
+    }
 
-    $('#childForm').addEventListener('submit', (event) => {
+    async function addChild(event) {
       event.preventDefault();
-      const parent = currentParent();
-      const child = {
-        id: id(),
+      await db.from('children').insert({
+        family_id: family.id,
         name: $('#childName').value.trim(),
         passcode: $('#childPasscode').value,
         points: 0
-      };
-      parent.children.push(child);
+      });
       event.target.reset();
-      saveState();
-      render();
-    });
+      await refreshAndRender();
+    }
 
-    $('#challengeForm').addEventListener('submit', (event) => {
+    async function addChallenge(event) {
       event.preventDefault();
-      const parent = currentParent();
-      if (!parent.children.length) return;
-      parent.challenges.push({
-        id: id(),
-        childId: Number($('#challengeChild').value),
+      if (!family.children.length) return;
+      await db.from('challenges').insert({
+        family_id: family.id,
+        child_id: $('#challengeChild').value,
         name: $('#challengeName').value.trim(),
         points: Number($('#challengePoints').value),
         details: $('#challengeDetails').value.trim()
       });
       event.target.reset();
       $('#challengePoints').value = 10;
-      saveState();
-      render();
-    });
+      await refreshAndRender();
+    }
 
-    $('#rewardForm').addEventListener('submit', (event) => {
+    async function addReward(event) {
       event.preventDefault();
-      const parent = currentParent();
-      parent.rewards.push({
-        id: id(),
+      await db.from('rewards').insert({
+        family_id: family.id,
         name: $('#rewardName').value.trim(),
         cost: Number($('#rewardCost').value),
-        limit: Number($('#rewardLimit').value),
-        claimed: 0,
-        until: $('#rewardUntil').value
+        limit_count: Number($('#rewardLimit').value),
+        claimed_count: 0,
+        available_until: $('#rewardUntil').value
       });
       event.target.reset();
       $('#rewardCost').value = 50;
       $('#rewardLimit').value = 1;
       $('#rewardUntil').value = nextDate(14);
-      saveState();
-      render();
-    });
+      await refreshAndRender();
+    }
 
+    async function sendCompletionRequest(challengeId) {
+      const challenge = family.challenges.find((item) => item.id === challengeId);
+      if (!challenge) return;
+      const existing = family.requests.find((request) => request.challenge_id === challengeId && request.status === 'waiting');
+      if (existing) {
+        openRequestEmail(existing.id);
+        return;
+      }
+
+      const { data } = await db.from('completion_requests').insert({
+        family_id: family.id,
+        child_id: challenge.child_id,
+        challenge_id: challenge.id,
+        challenge_name: challenge.name,
+        status: 'waiting',
+        email_sent: false
+      }).select().single();
+
+      activeTab = 'requests';
+      await refreshAndRender();
+      if (data) openRequestEmail(data.id);
+    }
+
+    async function openRequestEmail(requestId) {
+      const request = family.requests.find((item) => item.id === requestId);
+      if (!request) return;
+      await db.from('completion_requests').update({ email_sent: true }).eq('id', requestId);
+      window.location.href = requestEmailHref(request);
+      await refreshAndRender();
+    }
+
+    async function approveChallenge(challengeId) {
+      const challenge = family.challenges.find((item) => item.id === challengeId);
+      const child = family.children.find((item) => item.id === challenge?.child_id);
+      if (!challenge || !child) return;
+
+      await db.from('children').update({ points: child.points + challenge.points }).eq('id', child.id);
+      await db.from('completion_requests').update({ status: 'approved' }).eq('challenge_id', challengeId);
+      await db.from('challenges').delete().eq('id', challengeId);
+      await refreshAndRender();
+    }
+
+    async function claimReward(rewardId) {
+      const child = activeChild();
+      const reward = family.rewards.find((item) => item.id === rewardId);
+      if (!reward || child.points < reward.cost || reward.claimed_count >= reward.limit_count) return;
+
+      await db.from('children').update({ points: child.points - reward.cost }).eq('id', child.id);
+      await db.from('rewards').update({ claimed_count: reward.claimed_count + 1 }).eq('id', reward.id);
+      await refreshAndRender();
+    }
+
+    $('#createParentForm').addEventListener('submit', createParent);
+    $('#parentSignInForm').addEventListener('submit', parentSignIn);
+    $('#childSignInForm').addEventListener('submit', childSignIn);
+    $('#childForm').addEventListener('submit', addChild);
+    $('#challengeForm').addEventListener('submit', addChallenge);
+    $('#rewardForm').addEventListener('submit', addReward);
     $$('[data-auth-tab]').forEach((button) => button.addEventListener('click', () => setAuthTab(button.dataset.authTab)));
     $$('[data-tab]').forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.tab)));
+
     $('#rewardUntil').value = nextDate(14);
-    render();
+    refreshAndRender();
   </script>
 </body>
 </html>
