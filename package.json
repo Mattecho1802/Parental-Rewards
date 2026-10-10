@@ -1,0 +1,22 @@
+{
+  "name": "parental-rewards",
+  "version": "1.0.0",
+  "description": "Family rewards tracking application",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild analytics.js --bundle --format=esm --outfile=dist/analytics.js"
+  },
+  "keywords": [
+    "parental",
+    "rewards",
+    "family"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@vercel/analytics": "^2.0.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
