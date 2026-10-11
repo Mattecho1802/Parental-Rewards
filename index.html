@@ -271,6 +271,8 @@
     }
     .day-picker input { width: auto; margin: 0; }
     .field { display: grid; gap: 6px; color: var(--muted); font-size: 13px; font-weight: 700; }
+    .auth-card.single { grid-template-columns: 1fr; width: min(640px, 100%); }
+    .notice { color: var(--green); font-weight: 700; min-height: 20px; }
     input:disabled { background: #eef2f7; color: #98a2b3; cursor: not-allowed; }
 
     .row {
@@ -381,7 +383,7 @@
   </style>
 </head>
 <body>
-  <section id="authScreen" class="auth-screen">
+  <section id="authScreen" class="auth-screen hidden">
     <div class="auth-card">
       <div class="auth-brand">
         <div class="brand-row">
@@ -389,47 +391,45 @@
           <div>Parental Rewards</div>
         </div>
         <h1>Family rewards start here.</h1>
-        <p>Create a parent account, add children, set challenges, and approve points when they are done.</p>
+        <p>Parents sign in with an email and password. Children sign in with the family code and their name.</p>
       </div>
 
       <div class="auth-main">
         <nav class="tabs" aria-label="Sign in options">
-          <button class="tab active" data-auth-tab="create">Create account</button>
-          <button class="tab" data-auth-tab="parent">Parent sign in</button>
+          <button class="tab active" data-auth-tab="parent">Parent sign in</button>
+          <button class="tab" data-auth-tab="create">Create account</button>
           <button class="tab" data-auth-tab="child">Child sign in</button>
         </nav>
 
-        <form id="createParentForm" class="form-grid auth-panel" data-auth-panel="create">
-          <label>Parent name
-            <input id="createParentName" required placeholder="Parent" />
-          </label>
+        <form id="parentSignInForm" class="form-grid auth-panel" data-auth-panel="parent">
           <label>Parent email
-            <input id="createParentEmail" type="email" required placeholder="parent@example.com" />
+            <input id="parentSignInEmail" type="email" required placeholder="parent@example.com" autocomplete="email" />
           </label>
-          <label>Parent passcode
-            <input id="createParentPasscode" type="password" required minlength="4" placeholder="At least 4 characters" />
-          </label>
-          <label>Family name
-            <input id="createFamilyName" required placeholder="The Patel family" />
-          </label>
-          <button class="btn" type="submit">Create parent account</button>
-          <p id="createError" class="error"></p>
-        </form>
-
-        <form id="parentSignInForm" class="form-grid auth-panel hidden" data-auth-panel="parent">
-          <label>Parent email
-            <input id="parentSignInEmail" type="email" required placeholder="parent@example.com" />
-          </label>
-          <label>Parent passcode
-            <input id="parentSignInPasscode" type="password" required />
+          <label>Password
+            <input id="parentSignInPassword" type="password" required autocomplete="current-password" />
           </label>
           <button class="btn" type="submit">Sign in as parent</button>
+          <button class="btn secondary" id="forgotBtn" type="button">Forgot password?</button>
           <p id="parentError" class="error"></p>
+          <p id="parentNotice" class="notice"></p>
+        </form>
+
+        <form id="createParentForm" class="form-grid auth-panel hidden" data-auth-panel="create">
+          <label>Parent email
+            <input id="createParentEmail" type="email" required placeholder="parent@example.com" autocomplete="email" />
+          </label>
+          <label>Password
+            <input id="createParentPassword" type="password" required minlength="8" placeholder="At least 8 characters" autocomplete="new-password" />
+          </label>
+          <button class="btn" type="submit">Create account</button>
+          <p class="meta">After this you will create your family, or join one with an invite code.</p>
+          <p id="createError" class="error"></p>
+          <p id="createNotice" class="notice"></p>
         </form>
 
         <form id="childSignInForm" class="form-grid auth-panel hidden" data-auth-panel="child">
           <label>Family code
-            <input id="childFamilyCode" required placeholder="ABC123" />
+            <input id="childFamilyCode" required placeholder="ABCDE12345" autocapitalize="characters" />
           </label>
           <label>Child name
             <input id="childSignInName" required placeholder="Maya" />
@@ -437,6 +437,68 @@
           <button class="btn" type="submit">Sign in as child</button>
           <p id="childError" class="error"></p>
         </form>
+
+        <form id="recoverForm" class="form-grid auth-panel hidden" data-auth-panel="recover">
+          <h2 style="margin:0">Choose a new password</h2>
+          <label>New password
+            <input id="recoverPassword" type="password" required minlength="8" autocomplete="new-password" />
+          </label>
+          <button class="btn" type="submit">Save password</button>
+          <p id="recoverError" class="error"></p>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section id="onboardScreen" class="auth-screen hidden">
+    <div class="auth-card single">
+      <div class="auth-main">
+        <div>
+          <h2 style="margin:0 0 6px">Set up your family</h2>
+          <p class="meta">Signed in as <strong id="onboardEmail"></strong>.</p>
+        </div>
+
+        <nav class="tabs" aria-label="Family setup">
+          <button class="tab active" data-onboard-tab="new">Create a family</button>
+          <button class="tab" data-onboard-tab="join">Join with invite code</button>
+          <button class="tab" data-onboard-tab="claim">I already have a family</button>
+        </nav>
+
+        <form id="newFamilyForm" class="form-grid onboard-panel" data-onboard-panel="new">
+          <label>Your name
+            <input id="newParentName" required placeholder="Parent" />
+          </label>
+          <label>Family name
+            <input id="newFamilyName" required placeholder="The Patel family" />
+          </label>
+          <button class="btn" type="submit">Create family</button>
+          <p id="newFamilyError" class="error"></p>
+        </form>
+
+        <form id="joinFamilyForm" class="form-grid onboard-panel hidden" data-onboard-panel="join">
+          <label>Invite code
+            <input id="joinCode" required placeholder="From the other parent" autocapitalize="characters" />
+          </label>
+          <label>Your name
+            <input id="joinName" required placeholder="Parent" />
+          </label>
+          <button class="btn" type="submit">Join family</button>
+          <p id="joinError" class="error"></p>
+        </form>
+
+        <form id="claimFamilyForm" class="form-grid onboard-panel hidden" data-onboard-panel="claim">
+          <p class="meta">Used the old version with a passcode? Enter the email and passcode you used before to move your family across. You only need to do this once.</p>
+          <label>Old parent email
+            <input id="claimEmail" type="email" required placeholder="parent@example.com" />
+          </label>
+          <label>Old passcode
+            <input id="claimPasscode" type="password" required />
+          </label>
+          <button class="btn" type="submit">Move my family</button>
+          <p id="claimError" class="error"></p>
+        </form>
+
+        <button class="btn secondary" type="button" onclick="signOut()">Sign out</button>
       </div>
     </div>
   </section>
@@ -498,25 +560,27 @@
         </div>
 
         <div class="panel span-5 parent-only">
-          <h2>Add another parent</h2>
-          <form id="parentForm" class="form-grid">
-            <label>Parent name
-              <input id="newParentName" required placeholder="Parent" />
-            </label>
-            <label>Parent email
-              <input id="newParentEmail" type="email" required placeholder="parent2@example.com" />
-            </label>
-            <label>Parent passcode
-              <input id="newParentPasscode" type="password" required minlength="4" placeholder="At least 4 characters" />
-            </label>
-            <button class="btn" type="submit">Add parent</button>
-            <p id="parentAddError" class="error"></p>
-          </form>
+          <h2>Invite another parent</h2>
+          <div class="form-grid">
+            <p class="meta">Create a one-time code. The other parent creates an account here, chooses "Join with invite code" and enters it. Codes work once and last 7 days.</p>
+            <button class="btn" type="button" id="inviteBtn">Create invite code</button>
+            <div id="inviteResult"></div>
+            <p id="inviteError" class="error"></p>
+          </div>
         </div>
 
         <div class="panel span-7 parent-only">
           <h2>Parents</h2>
           <div id="parentsList" class="list"></div>
+        </div>
+
+        <div class="panel span-5 parent-only">
+          <h2>Family code</h2>
+          <div class="form-grid">
+            <p class="meta">Children sign in with this code and their name. Keep it private.</p>
+            <div class="item-title" id="familyCodeDisplay"></div>
+            <button class="btn secondary" type="button" id="regenCodeBtn">Generate a new code</button>
+          </div>
         </div>
       </section>
 
@@ -656,12 +720,15 @@
     const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xdGhvaHJiZ3JkYm5tem15dGFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MzU0NTQsImV4cCI6MjA5OTAxMTQ1NH0.NgEgHEFtgXy7YCzgZQsLHMSSPfEemoBX-yihGBLsTsU';
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    const sessionKey = 'parentalRewardsSession';
+    const childKey = 'parentalRewardsChild';
     const $ = (selector) => document.querySelector(selector);
     const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
-    let session = JSON.parse(localStorage.getItem(sessionKey) || 'null');
-    let activeTab = session?.role === 'child' ? 'challenges' : 'family';
+    let session = null; // { role, familyId, parentName?, memberRole?, userId?, childId?, token? }
+    let booting = true;
+    let needsOnboarding = false;
+    let recovering = false;
+    let activeTab = 'family';
     let family = null;
     let loading = false;
 
@@ -672,14 +739,6 @@
     }
 
     let editing = null; // { type: 'challenge' | 'goal', id }
-
-    function saveSession() {
-      localStorage.setItem(sessionKey, JSON.stringify(session));
-    }
-
-    function randomCode() {
-      return Math.random().toString(36).slice(2, 8).toUpperCase();
-    }
 
     function nextDate(days) {
       const date = new Date();
@@ -718,7 +777,19 @@
     }
 
     function parentEmails() {
-      return [family.parent_email, ...(family.parents || []).map((p) => p.email)];
+      return family?.parent_emails || [];
+    }
+
+    function check(res) {
+      if (res.error) {
+        alert(res.error.message || 'Something went wrong.');
+        return false;
+      }
+      return true;
+    }
+
+    function getChildToken() {
+      try { return JSON.parse(localStorage.getItem(childKey) || 'null')?.token || null; } catch (e) { return null; }
     }
 
     function repeatLabel(days) {
@@ -751,30 +822,30 @@
       return 'mailto:' + parentEmails().map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
     }
 
-    async function loadFamily(familyId, silent = false) {
+    // Returns 'changed' | 'same' | 'expired' | 'error'
+    async function loadParentData(silent) {
       if (!silent) loading = true;
-      const { data: familyRow, error: familyError } = await db
+      const familyId = session.familyId;
+      const { data: familyRow, error } = await db
         .from('families')
-        .select('*')
+        .select('id, family_name, family_code')
         .eq('id', familyId)
-        .single();
+        .maybeSingle();
 
-      if (familyError || !familyRow) {
-        loading = false;
-        if (!silent) signOut();
-        return false;
-      }
+      if (error) { loading = false; return 'error'; }
+      if (!familyRow) { loading = false; return 'expired'; }
 
-      const [childrenRes, challengesRes, goalsRes, rewardsRes, requestsRes, parentsRes, logRes] = await Promise.all([
-        db.from('children').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
+      const [childrenRes, challengesRes, goalsRes, rewardsRes, requestsRes, membersRes, logRes] = await Promise.all([
+        db.from('children').select('id, family_id, name, points, created_at').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('challenges').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('goals').select('*').eq('family_id', familyId).order('due_date', { ascending: true }),
         db.from('rewards').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('completion_requests').select('*').eq('family_id', familyId).order('created_at', { ascending: false }),
-        db.from('family_parents').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
+        db.from('family_members').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('points_log').select('*').eq('family_id', familyId).order('created_at', { ascending: false }).limit(200)
       ]);
 
+      const members = membersRes.data || [];
       const next = {
         ...familyRow,
         children: childrenRes.data || [],
@@ -782,45 +853,152 @@
         goals: goalsRes.data || [],
         rewards: rewardsRes.data || [],
         requests: requestsRes.data || [],
-        parents: parentsRes.data || [],
+        parents: members,
+        parent_emails: members.map((m) => m.email).filter(Boolean),
         log: logRes.data || []
       };
       const changed = !family || JSON.stringify(next) !== JSON.stringify(family);
       family = next;
       loading = false;
-      return changed;
+      return changed ? 'changed' : 'same';
+    }
+
+    async function loadChildData(silent) {
+      const token = session.token || getChildToken();
+      if (!token) return 'expired';
+      if (!silent) loading = true;
+      const { data, error } = await db.rpc('child_state', { p_token: token });
+      if (error) {
+        loading = false;
+        return /expired/i.test(error.message || '') ? 'expired' : 'error';
+      }
+      if (!data) { loading = false; return 'expired'; }
+
+      const next = {
+        id: data.family_id,
+        family_name: data.family_name,
+        family_code: null,
+        children: [data.child],
+        challenges: data.challenges || [],
+        goals: data.goals || [],
+        rewards: data.rewards || [],
+        requests: data.requests || [],
+        parents: [],
+        parent_emails: data.parent_emails || [],
+        log: data.log || []
+      };
+      const changed = !family || JSON.stringify(next) !== JSON.stringify(family);
+      family = next;
+      loading = false;
+      return changed ? 'changed' : 'same';
+    }
+
+    async function loadData(silent = false) {
+      if (!session) return 'error';
+      return session.role === 'child' ? loadChildData(silent) : loadParentData(silent);
     }
 
     // Quietly re-check the database and only redraw if something changed
+    // Quietly re-check the database and only redraw if something changed
     async function autoRefresh() {
-      if (!session?.familyId || loading || document.hidden) return;
+      if (!session || loading || document.hidden) return;
       const el = document.activeElement;
       if (el && (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || (el.tagName === 'INPUT' && el.type !== 'checkbox'))) return;
-      if (await loadFamily(session.familyId, true)) render();
-    }
-
-    async function logPoints(childId, amount, reason) {
-      if (!amount) return;
-      await db.from('points_log').insert({ family_id: family.id, child_id: childId, amount, reason });
+      const result = await loadData(true);
+      if (result === 'changed') render();
+      else if (result === 'expired') signOut();
     }
 
     async function refreshAndRender() {
-      if (session?.familyId) await loadFamily(session.familyId);
+      const result = await loadData(false);
+      if (result === 'expired') { signOut(); return; }
       render();
+    }
+
+    function resetState() {
+      session = null;
+      family = null;
+      loading = false;
+      needsOnboarding = false;
+      activeTab = 'family';
+      editing = null;
+      document.title = 'Parental Rewards';
+    }
+
+    async function enterParent(user) {
+      booting = false;
+      localStorage.removeItem(childKey);
+      const { data: member, error } = await db.from('family_members').select('*').eq('user_id', user.id).maybeSingle();
+      if (error) {
+        resetState();
+        render();
+        setMessage('#parentError', 'Could not load your account: ' + error.message);
+        return;
+      }
+      if (!member) {
+        session = null;
+        family = null;
+        needsOnboarding = true;
+        $('#onboardEmail').textContent = user.email || '';
+        render();
+        return;
+      }
+      needsOnboarding = false;
+      session = { role: 'parent', familyId: member.family_id, parentName: member.name, memberRole: member.role, userId: user.id };
+      activeTab = 'family';
+      await refreshAndRender();
+    }
+
+    async function enterChild() {
+      booting = false;
+      needsOnboarding = false;
+      const token = getChildToken();
+      session = { role: 'child', token };
+      const result = await loadChildData(false);
+      if (result !== 'changed' && result !== 'same') {
+        localStorage.removeItem(childKey);
+        resetState();
+        render();
+        return;
+      }
+      session = { role: 'child', token, familyId: family.id, childId: family.children[0].id };
+      activeTab = 'challenges';
+      render();
+    }
+
+    async function startFromAuth(authSession) {
+      if (authSession?.user) await enterParent(authSession.user);
+      else if (getChildToken()) await enterChild();
+      else { booting = false; resetState(); render(); }
+    }
+
+    async function afterOnboard() {
+      const { data } = await db.auth.getUser();
+      if (data?.user) await enterParent(data.user);
     }
 
     function setAuthTab(tab) {
       $$('[data-auth-tab]').forEach((button) => button.classList.toggle('active', button.dataset.authTab === tab));
       $$('.auth-panel').forEach((panel) => panel.classList.toggle('hidden', panel.dataset.authPanel !== tab));
-      $$('.error').forEach((error) => error.textContent = '');
+      $$('.error, .notice').forEach((el) => el.textContent = '');
     }
 
-    function signOut() {
-      session = null;
-      family = null;
-      localStorage.removeItem(sessionKey);
-      document.title = 'Parental Rewards';
-      activeTab = 'family';
+    function setOnboardTab(tab) {
+      $$('[data-onboard-tab]').forEach((button) => button.classList.toggle('active', button.dataset.onboardTab === tab));
+      $$('.onboard-panel').forEach((panel) => panel.classList.toggle('hidden', panel.dataset.onboardPanel !== tab));
+      $$('.error, .notice').forEach((el) => el.textContent = '');
+    }
+
+    async function signOut() {
+      const token = getChildToken();
+      if (token) {
+        db.rpc('child_logout', { p_token: token });
+        localStorage.removeItem(childKey);
+      }
+      if (session?.role === 'parent' || needsOnboarding) {
+        await db.auth.signOut({ scope: 'local' });
+      }
+      resetState();
       render();
     }
 
@@ -830,6 +1008,12 @@
     }
 
     function render() {
+      $('#onboardScreen').classList.toggle('hidden', booting || !needsOnboarding);
+      if (booting || needsOnboarding) {
+        $('#authScreen').classList.add('hidden');
+        $('#appScreen').classList.add('hidden');
+        return;
+      }
       if (!session) {
         $('#authScreen').classList.remove('hidden');
         $('#appScreen').classList.add('hidden');
@@ -855,7 +1039,7 @@
       $('#authScreen').classList.add('hidden');
       $('#appScreen').classList.remove('hidden');
       $('#profileLabel').textContent = isParent ? 'Parent account' : 'Child account';
-      $('#profileName').textContent = isParent ? (session.parentName || family.parent_name) : child.name;
+      $('#profileName').textContent = isParent ? (session.parentName || 'Parent') : child.name;
       $('#profileDetail').textContent = isParent ? 'Family code: ' + family.family_code : family.family_name;
       $('#sidebarNote').textContent = isParent
         ? 'Give children the family code and their name so they can sign in.'
@@ -931,18 +1115,16 @@
     function renderGoalSelect() { renderChildPicker('goalChildren'); }
 
     function renderParents() {
-      const rows = [
-        { id: null, name: family.parent_name, email: family.parent_email, primary: true },
-        ...(family.parents || []).map((p) => ({ id: p.id, name: p.name, email: p.email, primary: false }))
-      ];
-      $('#parentsList').innerHTML = rows.map((p) => `
+      const isOwner = session.memberRole === 'owner';
+      $('#familyCodeDisplay').textContent = family.family_code || '';
+      $('#parentsList').innerHTML = (family.parents || []).map((p) => `
         <article class="item">
           <div class="item-header">
             <div>
               <div class="item-title">${esc(p.name)}</div>
-              <div class="meta">${esc(p.email)}${p.primary ? ' (account owner)' : ''}</div>
+              <div class="meta">${esc(p.email)}${p.role === 'owner' ? ' (account owner)' : ''}${p.user_id === session.userId ? ' (you)' : ''}</div>
             </div>
-            ${p.primary ? '' : `<button class="btn secondary" type="button" onclick="removeParent('${p.id}')">Remove</button>`}
+            ${isOwner && p.role !== 'owner' ? `<button class="btn secondary" type="button" onclick="removeParent('${p.user_id}')">Remove</button>` : ''}
           </div>
         </article>
       `).join('');
@@ -1088,7 +1270,7 @@
       if (goal.status === 'completed') return 'Completed';
       if (goal.status === 'consequence') return 'Consequence active';
       if (goal.status === 'waiting') return 'Waiting for approval';
-      if (goal.due_date < nextDate(0)) return 'Overdue';
+      if (goal.due_date < todayStr()) return 'Overdue';
       return 'Active';
     }
 
@@ -1121,7 +1303,7 @@
                 <div class="item-title">${esc(goal.name)}</div>
                 <div class="meta">For ${esc(childName(goal.child_id))}. Due ${goal.due_date}.${repeatLabel(goal.recurring_days)} ${esc(goal.details)}</div>
               </div>
-              <span class="pill ${goal.status === 'completed' ? 'green' : goal.due_date < nextDate(0) || goal.status === 'consequence' ? 'amber' : ''}">${goalStatusLabel(goal)}</span>
+              <span class="pill ${goal.status === 'completed' ? 'green' : goal.due_date < todayStr() || goal.status === 'consequence' ? 'amber' : ''}">${goalStatusLabel(goal)}</span>
             </div>
             <div class="email-preview">
               <div><strong>Consequence:</strong> ${esc(goal.consequence)}</div>
@@ -1142,7 +1324,7 @@
       const child = activeChild();
       list.innerHTML = family.rewards.map((reward) => {
         const remaining = reward.limit_count - reward.claimed_count;
-        const isAvailable = remaining > 0 && reward.available_until >= nextDate(0);
+        const isAvailable = remaining > 0 && reward.available_until >= todayStr();
         const canClaim = session.role === 'child' && child.points >= reward.cost && isAvailable;
         return `
           <article class="item">
@@ -1167,7 +1349,7 @@
       const goals = (session.role === 'parent'
         ? family.goals
         : family.goals.filter((goal) => goal.child_id === child.id)
-      ).filter((goal) => goal.status === 'consequence' || (goal.status !== 'completed' && goal.due_date < nextDate(0)));
+      ).filter((goal) => goal.status === 'consequence' || (goal.status !== 'completed' && goal.due_date < todayStr()));
 
       if (!goals.length) {
         list.innerHTML = '<div class="empty">No consequences to show.</div>';
@@ -1258,103 +1440,155 @@
       }).join('');
     }
 
-    async function createParent(event) {
+    async function signUp(event) {
       event.preventDefault();
       setMessage('#createError', '');
-      const email = $('#createParentEmail').value.trim().toLowerCase();
-      const { data: existingFamily } = await db.from('families').select('id').eq('parent_email', email).maybeSingle();
-      const { data: existingExtra } = await db.from('family_parents').select('id').eq('email', email).maybeSingle();
-      const existing = existingFamily || existingExtra;
-      if (existing) {
-        setMessage('#createError', 'That parent email already has an account.');
-        return;
-      }
-
-      const { data, error } = await db.from('families').insert({
-        parent_name: $('#createParentName').value.trim(),
-        parent_email: email,
-        parent_passcode: $('#createParentPasscode').value,
-        family_name: $('#createFamilyName').value.trim(),
-        family_code: randomCode()
-      }).select().single();
-
+      setMessage('#createNotice', '');
+      const { data, error } = await db.auth.signUp({
+        email: $('#createParentEmail').value.trim().toLowerCase(),
+        password: $('#createParentPassword').value
+      });
       if (error) {
         setMessage('#createError', error.message);
         return;
       }
-
-      session = { role: 'parent', familyId: data.id };
-      activeTab = 'family';
-      saveSession();
-      await refreshAndRender();
+      if (!data.session) {
+        setMessage('#createNotice', 'Check your email to confirm your account, then come back and sign in.');
+      }
     }
 
     async function parentSignIn(event) {
       event.preventDefault();
       setMessage('#parentError', '');
-      const email = $('#parentSignInEmail').value.trim().toLowerCase();
-      const passcode = $('#parentSignInPasscode').value;
-      let familyId = null;
-      let parentName = null;
-      const { data } = await db
-        .from('families')
-        .select('*')
-        .eq('parent_email', email)
-        .eq('parent_passcode', passcode)
-        .maybeSingle();
-
-      if (data) {
-        familyId = data.id;
-        parentName = data.parent_name;
-      } else {
-        const { data: extra } = await db
-          .from('family_parents')
-          .select('*')
-          .eq('email', email)
-          .eq('passcode', passcode)
-          .maybeSingle();
-        if (extra) {
-          familyId = extra.family_id;
-          parentName = extra.name;
-        }
+      setMessage('#parentNotice', '');
+      const { error } = await db.auth.signInWithPassword({
+        email: $('#parentSignInEmail').value.trim().toLowerCase(),
+        password: $('#parentSignInPassword').value
+      });
+      if (error) {
+        setMessage('#parentError', /invalid login/i.test(error.message) ? 'Email or password is not right.' : error.message);
       }
+      // On success the auth listener signs us in.
+    }
 
-      if (!familyId) {
-        setMessage('#parentError', 'Parent email or passcode is not right.');
+    async function forgotPassword() {
+      setMessage('#parentError', '');
+      setMessage('#parentNotice', '');
+      const email = $('#parentSignInEmail').value.trim().toLowerCase();
+      if (!email) {
+        setMessage('#parentError', 'Type your email above first.');
         return;
       }
+      const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname });
+      if (error) {
+        setMessage('#parentError', error.message);
+        return;
+      }
+      setMessage('#parentNotice', 'If that email has an account, a reset link is on its way.');
+    }
 
-      session = { role: 'parent', familyId, parentName };
-      activeTab = 'family';
-      saveSession();
-      await refreshAndRender();
+    async function setNewPassword(event) {
+      event.preventDefault();
+      setMessage('#recoverError', '');
+      const { data, error } = await db.auth.updateUser({ password: $('#recoverPassword').value });
+      if (error) {
+        setMessage('#recoverError', error.message);
+        return;
+      }
+      recovering = false;
+      history.replaceState(null, '', window.location.pathname);
+      $('#recoverForm').reset();
+      setAuthTab('parent');
+      await enterParent(data.user);
+    }
+
+    async function createFamily(event) {
+      event.preventDefault();
+      setMessage('#newFamilyError', '');
+      const { error } = await db.rpc('create_family', {
+        p_family_name: $('#newFamilyName').value.trim(),
+        p_parent_name: $('#newParentName').value.trim()
+      });
+      if (error) {
+        setMessage('#newFamilyError', error.message);
+        return;
+      }
+      await afterOnboard();
+    }
+
+    async function joinFamily(event) {
+      event.preventDefault();
+      setMessage('#joinError', '');
+      const { data, error } = await db.rpc('join_family', {
+        p_code: $('#joinCode').value.trim(),
+        p_parent_name: $('#joinName').value.trim()
+      });
+      if (error) {
+        setMessage('#joinError', error.message);
+        return;
+      }
+      if (!data) {
+        setMessage('#joinError', 'That invite code is not valid or has expired.');
+        return;
+      }
+      await afterOnboard();
+    }
+
+    async function claimFamily(event) {
+      event.preventDefault();
+      setMessage('#claimError', '');
+      const { data, error } = await db.rpc('claim_legacy_family', {
+        p_email: $('#claimEmail').value.trim(),
+        p_passcode: $('#claimPasscode').value
+      });
+      if (error) {
+        setMessage('#claimError', error.message);
+        return;
+      }
+      if (!data) {
+        setMessage('#claimError', 'That email or passcode is not right.');
+        return;
+      }
+      await afterOnboard();
     }
 
     async function childSignIn(event) {
       event.preventDefault();
       setMessage('#childError', '');
-      const code = $('#childFamilyCode').value.trim().toUpperCase();
-      const name = $('#childSignInName').value.trim();
-      const { data: familyRow } = await db.from('families').select('*').eq('family_code', code).maybeSingle();
-      if (!familyRow) {
+      const { data: token, error } = await db.rpc('child_login', {
+        p_family_code: $('#childFamilyCode').value.trim(),
+        p_name: $('#childSignInName').value.trim()
+      });
+      if (error) {
+        setMessage('#childError', error.message);
+        return;
+      }
+      if (!token) {
         setMessage('#childError', 'Family code or child name is not right.');
         return;
       }
+      localStorage.setItem(childKey, JSON.stringify({ token }));
+      await enterChild();
+    }
 
-      const { data: children } = await db
-        .from('children')
-        .select('*')
-        .eq('family_id', familyRow.id);
-      const child = (children || []).find((item) => item.name.toLowerCase() === name.toLowerCase());
-
-      if (!child) {
-        setMessage('#childError', 'Family code or child name is not right.');
+    async function createInvite() {
+      setMessage('#inviteError', '');
+      const { data, error } = await db.rpc('create_invite');
+      if (error) {
+        setMessage('#inviteError', error.message);
         return;
       }
+      $('#inviteResult').innerHTML = `
+        <div class="email-preview">
+          <div><strong>Invite code:</strong> ${esc(data)}</div>
+          <div>Works once and expires in 7 days.</div>
+        </div>`;
+    }
 
-      session = { role: 'child', familyId: familyRow.id, childId: child.id };
-      activeTab = 'challenges';
-      saveSession();
+    async function regenerateCode() {
+      if (!confirm('Generate a new family code? Children will need the new code the next time they sign in.')) return;
+      const res = await db.rpc('regenerate_family_code');
+      if (!check(res)) return;
       await refreshAndRender();
     }
 
@@ -1366,44 +1600,20 @@
         setMessage('#childAddError', 'A child with that name already exists.');
         return;
       }
-      await db.from('children').insert({
-        family_id: family.id,
-        name,
-        passcode: '',
-        points: 0
-      });
-      event.target.reset();
-      await refreshAndRender();
-    }
-
-    async function addParent(event) {
-      event.preventDefault();
-      setMessage('#parentAddError', '');
-      const email = $('#newParentEmail').value.trim().toLowerCase();
-      const { data: inFamilies } = await db.from('families').select('id').eq('parent_email', email).maybeSingle();
-      const { data: inParents } = await db.from('family_parents').select('id').eq('email', email).maybeSingle();
-      if (inFamilies || inParents) {
-        setMessage('#parentAddError', 'That email already has an account.');
-        return;
-      }
-      const { error } = await db.from('family_parents').insert({
-        family_id: family.id,
-        name: $('#newParentName').value.trim(),
-        email,
-        passcode: $('#newParentPasscode').value
-      });
+      const { error } = await db.from('children').insert({ family_id: family.id, name, points: 0 });
       if (error) {
-        setMessage('#parentAddError', error.message);
+        setMessage('#childAddError', error.message);
         return;
       }
       event.target.reset();
       await refreshAndRender();
     }
 
-    async function removeParent(parentId) {
+    async function removeParent(userId) {
       if (session.role !== 'parent') return;
-      if (!confirm('Remove this parent? They will no longer be able to sign in.')) return;
-      await db.from('family_parents').delete().eq('id', parentId);
+      if (!confirm('Remove this parent? They will lose access to the family.')) return;
+      const res = await db.rpc('remove_parent', { p_user_id: userId });
+      if (!check(res)) return;
       await refreshAndRender();
     }
 
@@ -1412,11 +1622,8 @@
       const kid = family.children.find((c) => c.id === childId);
       if (!kid) return;
       if (!confirm('Remove ' + kid.name + '? This also deletes their points, challenges, goals and requests. This cannot be undone.')) return;
-      await db.from('completion_requests').delete().eq('child_id', childId);
-      await db.from('challenges').delete().eq('child_id', childId);
-      await db.from('goals').delete().eq('child_id', childId);
-      await db.from('points_log').delete().eq('child_id', childId);
-      await db.from('children').delete().eq('id', childId);
+      const res = await db.rpc('remove_child', { p_child_id: childId });
+      if (!check(res)) return;
       await refreshAndRender();
     }
 
@@ -1447,7 +1654,11 @@
         return;
       }
 
-      await db.from('challenges').insert(childIds.map((id) => ({ family_id: family.id, child_id: id, ...fields })));
+      const { error } = await db.from('challenges').insert(childIds.map((id) => ({ family_id: family.id, child_id: id, ...fields })));
+      if (error) {
+        setMessage('#challengeError', error.message);
+        return;
+      }
       event.target.reset();
       $('#challengePoints').value = 10;
       await refreshAndRender();
@@ -1486,13 +1697,17 @@
       }
 
       const dueDate = days.length ? firstOccurrence(days) : $('#goalDueDate').value;
-      await db.from('goals').insert(childIds.map((id) => ({
+      const { error } = await db.from('goals').insert(childIds.map((id) => ({
         family_id: family.id,
         child_id: id,
         due_date: dueDate,
         status: 'active',
         ...fields
       })));
+      if (error) {
+        setMessage('#goalError', error.message);
+        return;
+      }
       event.target.reset();
       $('#goalDueDate').value = nextDate(7);
       updateGoalDueState();
@@ -1517,7 +1732,8 @@
     }
 
     async function markGoalDone(goalId) {
-      await db.from('goals').update({ status: 'waiting' }).eq('id', goalId);
+      const res = await db.rpc('child_mark_goal_done', { p_token: session.token, p_goal_id: goalId });
+      if (!check(res)) return;
       activeTab = 'goals';
       await refreshAndRender();
     }
@@ -1553,53 +1769,28 @@
     }
 
     async function sendCompletionRequest(challengeId) {
-      const challenge = family.challenges.find((item) => item.id === challengeId);
-      if (!challenge) return;
-      const existing = family.requests.find((request) => request.challenge_id === challengeId && request.status === 'waiting');
-      if (existing) {
-        openRequestEmail(existing.id);
+      const { data: requestId, error } = await db.rpc('child_request_completion', { p_token: session.token, p_challenge_id: challengeId });
+      if (error) {
+        alert(error.message);
         return;
       }
-
-      const { data } = await db.from('completion_requests').insert({
-        family_id: family.id,
-        child_id: challenge.child_id,
-        challenge_id: challenge.id,
-        challenge_name: challenge.name,
-        status: 'waiting',
-        email_sent: false
-      }).select().single();
-
       activeTab = 'requests';
       await refreshAndRender();
-      if (data) openRequestEmail(data.id);
+      if (requestId) openRequestEmail(requestId);
     }
 
     async function openRequestEmail(requestId) {
       const request = family.requests.find((item) => item.id === requestId);
       if (!request) return;
-      await db.from('completion_requests').update({ email_sent: true }).eq('id', requestId);
+      await db.rpc('child_mark_email_sent', { p_token: session.token, p_request_id: requestId });
       window.location.href = requestEmailHref(request);
       await refreshAndRender();
     }
 
     async function approveChallenge(challengeId) {
-      const challenge = family.challenges.find((item) => item.id === challengeId);
-      const child = family.children.find((item) => item.id === challenge?.child_id);
-      if (!challenge || !child) return;
-
-      await db.from('children').update({ points: child.points + challenge.points }).eq('id', child.id);
-      await logPoints(child.id, challenge.points, 'Completed: ' + challenge.name);
-      await db.from('completion_requests').update({ status: 'approved' })
-        .eq('challenge_id', challengeId).eq('status', 'waiting');
-
-      if ((challenge.recurring_days || []).length > 0) {
-        // Recurring: keep it, just mark done for today
-        await db.from('challenges').update({ last_completed_date: todayStr() }).eq('id', challengeId);
-      } else {
-        // One-time: remove as before
-        await db.from('challenges').delete().eq('id', challengeId);
-      }
+      if (session.role !== 'parent') return;
+      const res = await db.rpc('approve_challenge', { p_challenge_id: challengeId, p_today: todayStr() });
+      if (!check(res)) return;
       await refreshAndRender();
     }
 
@@ -1608,9 +1799,8 @@
       const input = document.getElementById('points-' + childId);
       const value = Math.max(0, Math.round(Number(input.value)));
       if (!Number.isFinite(value)) return;
-      const kid = family.children.find((c) => c.id === childId);
-      await db.from('children').update({ points: value }).eq('id', childId);
-      if (kid) await logPoints(childId, value - kid.points, 'Adjusted by ' + (session.parentName || 'parent'));
+      const res = await db.rpc('set_child_points', { p_child_id: childId, p_points: value });
+      if (!check(res)) return;
       await refreshAndRender();
     }
 
@@ -1631,31 +1821,30 @@
     }
 
     async function claimReward(rewardId) {
-      const child = activeChild();
-      const reward = family.rewards.find((item) => item.id === rewardId);
-      if (!reward || child.points < reward.cost || reward.claimed_count >= reward.limit_count) return;
-
-      await db.from('children').update({ points: child.points - reward.cost }).eq('id', child.id);
-      await logPoints(child.id, -reward.cost, 'Redeemed: ' + reward.name);
-      await db.from('rewards').update({ claimed_count: reward.claimed_count + 1 }).eq('id', reward.id);
+      const res = await db.rpc('child_redeem', { p_token: session.token, p_reward_id: rewardId, p_today: todayStr() });
+      if (!check(res)) return;
       await refreshAndRender();
     }
 
-    $('#createParentForm').addEventListener('submit', createParent);
+    $('#createParentForm').addEventListener('submit', signUp);
     $('#parentSignInForm').addEventListener('submit', parentSignIn);
     $('#childSignInForm').addEventListener('submit', childSignIn);
+    $('#recoverForm').addEventListener('submit', setNewPassword);
+    $('#forgotBtn').addEventListener('click', forgotPassword);
+    $('#newFamilyForm').addEventListener('submit', createFamily);
+    $('#joinFamilyForm').addEventListener('submit', joinFamily);
+    $('#claimFamilyForm').addEventListener('submit', claimFamily);
+    $('#inviteBtn').addEventListener('click', createInvite);
+    $('#regenCodeBtn').addEventListener('click', regenerateCode);
     $('#childForm').addEventListener('submit', addChild);
     $('#challengeForm').addEventListener('submit', addChallenge);
     $('#goalForm').addEventListener('submit', addGoal);
     $('#rewardForm').addEventListener('submit', addReward);
-    $$('[data-auth-tab]').forEach((button) => button.addEventListener('click', () => setAuthTab(button.dataset.authTab)));
-    $$('[data-tab]').forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.tab)));
-
-    $('#parentForm').addEventListener('submit', addParent);
     $('#challengeCancel').addEventListener('click', cancelEdit);
     $('#goalCancel').addEventListener('click', cancelEdit);
-    setInterval(autoRefresh, 15000);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) autoRefresh(); });
+    $$('[data-auth-tab]').forEach((button) => button.addEventListener('click', () => setAuthTab(button.dataset.authTab)));
+    $$('[data-onboard-tab]').forEach((button) => button.addEventListener('click', () => setOnboardTab(button.dataset.onboardTab)));
+    $$('[data-tab]').forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.tab)));
     $('#goalDays').addEventListener('change', updateGoalDueState);
     ['challengeChildren', 'goalChildren'].forEach((id) => {
       $('#' + id).addEventListener('change', (e) => {
@@ -1671,7 +1860,44 @@
 
     $('#goalDueDate').value = nextDate(7);
     $('#rewardUntil').value = nextDate(14);
-    refreshAndRender();
+
+    setInterval(autoRefresh, 15000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) autoRefresh(); });
+
+    // Parent sign-in state comes from Supabase Auth; children use a saved token.
+    db.auth.onAuthStateChange((event, authSession) => {
+      // Run outside the callback so we never call Supabase from inside it
+      setTimeout(async () => {
+        if (event === 'PASSWORD_RECOVERY') {
+          recovering = true;
+          booting = false;
+          resetState();
+          setAuthTab('recover');
+          render();
+          return;
+        }
+        if (recovering) return;
+        if (event === 'INITIAL_SESSION') {
+          await startFromAuth(authSession);
+        } else if (event === 'SIGNED_IN') {
+          if (authSession?.user && !(session?.role === 'parent' && session.userId === authSession.user.id)) {
+            await enterParent(authSession.user);
+          }
+        } else if (event === 'SIGNED_OUT') {
+          if (session?.role === 'parent' || needsOnboarding) {
+            resetState();
+            render();
+          }
+        }
+      }, 0);
+    });
+
+    // Fallback in case the auth listener is slow to report the saved session
+    setTimeout(async () => {
+      if (!booting) return;
+      const { data } = await db.auth.getSession();
+      if (booting) await startFromAuth(data.session);
+    }, 2000);
   </script>
 </body>
 </html>
