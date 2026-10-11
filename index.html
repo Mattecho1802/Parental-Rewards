@@ -575,8 +575,12 @@
         </div>
 
         <div class="panel span-5 parent-only">
-          <h2>Family code</h2>
+          <h2>Family settings</h2>
           <div class="form-grid">
+            <label>Family name
+              <input id="familyNameInput" maxlength="60" />
+            </label>
+            <button class="btn secondary" type="button" id="saveFamilyNameBtn">Save family name</button>
             <p class="meta">Children sign in with this code and their name. Keep it private.</p>
             <div class="item-title" id="familyCodeDisplay"></div>
             <button class="btn secondary" type="button" id="regenCodeBtn">Generate a new code</button>
@@ -650,6 +654,9 @@
             <label>Consequence
               <textarea id="goalConsequence" required placeholder="No game time until it is completed"></textarea>
             </label>
+            <label>Consequence lasts (days) <span class="meta">(optional)</span>
+              <input id="goalConsequenceDays" type="number" min="1" step="1" placeholder="Leave empty for no end date" />
+            </label>
             <label>Details
               <textarea id="goalDetails" placeholder="What does complete look like?"></textarea>
             </label>
@@ -667,7 +674,7 @@
 
       <section id="rewards" class="tab-panel grid hidden">
         <div class="panel span-5 parent-only">
-          <h2>Add reward</h2>
+          <h2 id="rewardFormTitle">Add reward</h2>
           <form id="rewardForm" class="form-grid">
             <label>Reward name
               <input id="rewardName" required placeholder="Movie night" />
@@ -683,7 +690,9 @@
             <label>Available until
               <input id="rewardUntil" type="date" required />
             </label>
-            <button class="btn" type="submit">Create reward</button>
+            <button class="btn" id="rewardSubmit" type="submit">Create reward</button>
+            <button class="btn secondary hidden" id="rewardCancel" type="button">Cancel edit</button>
+            <p id="rewardError" class="error"></p>
           </form>
         </div>
 
@@ -694,7 +703,28 @@
       </section>
 
       <section id="consequences" class="tab-panel grid hidden">
-        <div class="panel span-12">
+        <div class="panel span-5 parent-only">
+          <h2 id="consequenceFormTitle">Add consequence</h2>
+          <form id="consequenceForm" class="form-grid">
+            <div class="field">Assign to
+              <div class="day-picker" id="consequenceChildren"></div>
+            </div>
+            <label>Consequence
+              <input id="consequenceName" required placeholder="No tablet" />
+            </label>
+            <label>Lasts (days) <span class="meta">(optional)</span>
+              <input id="consequenceDays" type="number" min="1" step="1" placeholder="Leave empty for no end date" />
+            </label>
+            <label>Details
+              <textarea id="consequenceDetails" placeholder="Anything else to note?"></textarea>
+            </label>
+            <button class="btn" id="consequenceSubmit" type="submit">Add consequence</button>
+            <button class="btn secondary hidden" id="consequenceCancel" type="button">Cancel edit</button>
+            <p id="consequenceError" class="error"></p>
+          </form>
+        </div>
+
+        <div class="panel span-7">
           <h2>Consequences</h2>
           <div id="consequenceList" class="list"></div>
         </div>
@@ -792,6 +822,37 @@
       try { return JSON.parse(localStorage.getItem(childKey) || 'null')?.token || null; } catch (e) { return null; }
     }
 
+    function fmtDate(d) {
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    function addDays(dateStr, n) {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      return fmtDate(new Date(y, m - 1, d + n));
+    }
+
+    function dayDiff(fromStr, toStr) {
+      const [y1, m1, d1] = fromStr.split('-').map(Number);
+      const [y2, m2, d2] = toStr.split('-').map(Number);
+      return Math.round((new Date(y2, m2 - 1, d2) - new Date(y1, m1 - 1, d1)) / 86400000);
+    }
+
+    function weekdayOf(dateStr) {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      return new Date(y, m - 1, d).getDay();
+    }
+
+    // Next selected weekday after a given date; if that has already passed, today onwards
+    function nextRecurringDate(days, afterDate) {
+      for (let i = 1; i <= 7; i++) {
+        const candidate = addDays(afterDate, i);
+        if (days.includes(weekdayOf(candidate))) {
+          return candidate < todayStr() ? firstOccurrence(days) : candidate;
+        }
+      }
+      return firstOccurrence(days);
+    }
+
     function repeatLabel(days) {
       return (days || []).length
         ? ' Repeats: ' + [...days].sort().map((d) => DAY_NAMES[d]).join(', ') + '.'
@@ -835,14 +896,15 @@
       if (error) { loading = false; return 'error'; }
       if (!familyRow) { loading = false; return 'expired'; }
 
-      const [childrenRes, challengesRes, goalsRes, rewardsRes, requestsRes, membersRes, logRes] = await Promise.all([
+      const [childrenRes, challengesRes, goalsRes, rewardsRes, requestsRes, membersRes, logRes, consRes] = await Promise.all([
         db.from('children').select('id, family_id, name, points, created_at').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('challenges').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('goals').select('*').eq('family_id', familyId).order('due_date', { ascending: true }),
         db.from('rewards').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('completion_requests').select('*').eq('family_id', familyId).order('created_at', { ascending: false }),
         db.from('family_members').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
-        db.from('points_log').select('*').eq('family_id', familyId).order('created_at', { ascending: false }).limit(200)
+        db.from('points_log').select('*').eq('family_id', familyId).order('created_at', { ascending: false }).limit(200),
+        db.from('consequences').select('*').eq('family_id', familyId).order('created_at', { ascending: false })
       ]);
 
       const members = membersRes.data || [];
@@ -855,7 +917,8 @@
         requests: requestsRes.data || [],
         parents: members,
         parent_emails: members.map((m) => m.email).filter(Boolean),
-        log: logRes.data || []
+        log: logRes.data || [],
+        consequences: consRes.data || []
       };
       const changed = !family || JSON.stringify(next) !== JSON.stringify(family);
       family = next;
@@ -885,7 +948,8 @@
         requests: data.requests || [],
         parents: [],
         parent_emails: data.parent_emails || [],
-        log: data.log || []
+        log: data.log || [],
+        consequences: data.consequences || []
       };
       const changed = !family || JSON.stringify(next) !== JSON.stringify(family);
       family = next;
@@ -1063,6 +1127,7 @@
       renderChallengeSelect();
       renderChallenges();
       renderGoalSelect();
+      renderConsequenceSelect();
       renderGoals();
       renderRewards();
       renderConsequences();
@@ -1117,10 +1182,13 @@
 
     function renderChallengeSelect() { renderChildPicker('challengeChildren'); }
     function renderGoalSelect() { renderChildPicker('goalChildren'); }
+    function renderConsequenceSelect() { renderChildPicker('consequenceChildren'); }
 
     function renderParents() {
       const isOwner = session.memberRole === 'owner';
       $('#familyCodeDisplay').textContent = family.family_code || '';
+      const familyInput = $('#familyNameInput');
+      if (familyInput && document.activeElement !== familyInput) familyInput.value = family.family_name || '';
       $('#parentsList').innerHTML = (family.parents || []).map((p) => {
         const canEdit = p.user_id === session.userId || isOwner;
         return `
@@ -1180,20 +1248,54 @@
 
     function cancelEdit() {
       editing = null;
-      $('#challengeForm').reset();
-      $('#goalForm').reset();
+      ['challengeForm', 'goalForm', 'rewardForm', 'consequenceForm'].forEach((id) => $('#' + id).reset());
       $('#challengePoints').value = 10;
       $('#goalDueDate').value = nextDate(7);
+      $('#rewardCost').value = 50;
+      $('#rewardLimit').value = 1;
+      $('#rewardUntil').value = nextDate(14);
       $('#challengeFormTitle').textContent = 'Add challenge';
       $('#goalFormTitle').textContent = 'Add goal';
+      $('#rewardFormTitle').textContent = 'Add reward';
+      $('#consequenceFormTitle').textContent = 'Add consequence';
       $('#challengeSubmit').textContent = 'Create challenge';
       $('#goalSubmit').textContent = 'Create goal';
-      $('#challengeCancel').classList.add('hidden');
-      $('#goalCancel').classList.add('hidden');
-      setMessage('#challengeError', '');
-      setMessage('#goalError', '');
+      $('#rewardSubmit').textContent = 'Create reward';
+      $('#consequenceSubmit').textContent = 'Add consequence';
+      ['challengeCancel', 'goalCancel', 'rewardCancel', 'consequenceCancel'].forEach((id) => $('#' + id).classList.add('hidden'));
+      ['#challengeError', '#goalError', '#rewardError', '#consequenceError'].forEach((id) => setMessage(id, ''));
       updateGoalDueState();
-      if (family) { renderChallengeSelect(); renderGoalSelect(); }
+      if (family) { renderChallengeSelect(); renderGoalSelect(); renderConsequenceSelect(); }
+    }
+
+    function startEditReward(id) {
+      const r = family.rewards.find((x) => x.id === id);
+      if (!r) return;
+      cancelEdit();
+      editing = { type: 'reward', id };
+      $('#rewardName').value = r.name;
+      $('#rewardCost').value = r.cost;
+      $('#rewardLimit').value = r.limit_count;
+      $('#rewardUntil').value = r.available_until;
+      $('#rewardFormTitle').textContent = 'Edit reward';
+      $('#rewardSubmit').textContent = 'Save changes';
+      $('#rewardCancel').classList.remove('hidden');
+      $('#rewardForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function startEditConsequence(id) {
+      const c = family.consequences.find((x) => x.id === id);
+      if (!c) return;
+      cancelEdit();
+      editing = { type: 'consequence', id };
+      $('#consequenceName').value = c.name;
+      $('#consequenceDetails').value = c.details || '';
+      $('#consequenceDays').value = c.ends_on ? dayDiff(c.starts_on, c.ends_on) + 1 : '';
+      setPicker('consequenceChildren', [c.child_id]);
+      $('#consequenceFormTitle').textContent = 'Edit consequence';
+      $('#consequenceSubmit').textContent = 'Save changes';
+      $('#consequenceCancel').classList.remove('hidden');
+      $('#consequenceForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     function startEditChallenge(id) {
@@ -1220,6 +1322,7 @@
       $('#goalName').value = g.name;
       $('#goalDetails').value = g.details || '';
       $('#goalConsequence').value = g.consequence || '';
+      $('#goalConsequenceDays').value = g.consequence_days || '';
       $('#goalDueDate').value = g.due_date;
       setPicker('goalChildren', [g.child_id]);
       setDays('goalDays', g.recurring_days || []);
@@ -1278,10 +1381,16 @@
       }).join('');
     }
 
+    // A repeating goal that was just done stays hidden from the child until its next day
+    function isWaitingForNextDay(goal) {
+      return (goal.recurring_days || []).length > 0 && goal.status === 'active' && goal.due_date > todayStr();
+    }
+
     function goalStatusLabel(goal) {
       if (goal.status === 'completed') return 'Completed';
       if (goal.status === 'consequence') return 'Consequence active';
       if (goal.status === 'waiting') return 'Waiting for approval';
+      if ((goal.recurring_days || []).length && goal.status === 'active' && goal.due_date > todayStr()) return 'Upcoming';
       if (goal.due_date === todayStr()) return 'Due today';
       if (goal.due_date < todayStr()) return 'Overdue';
       return 'Active';
@@ -1292,7 +1401,7 @@
       const child = activeChild();
       const goals = session.role === 'parent'
         ? family.goals
-        : family.goals.filter((goal) => goal.child_id === child.id);
+        : family.goals.filter((goal) => goal.child_id === child.id && !isWaitingForNextDay(goal));
 
       if (!goals.length) {
         list.innerHTML = '<div class="empty">No goals yet.</div>';
@@ -1321,7 +1430,7 @@
               <span class="pill ${goal.status === 'completed' ? 'green' : goal.due_date < todayStr() || goal.status === 'consequence' ? 'amber' : ''}">${goalStatusLabel(goal)}</span>
             </div>
             <div class="email-preview">
-              <div><strong>Consequence:</strong> ${esc(goal.consequence)}</div>
+              <div><strong>Consequence:</strong> ${esc(goal.consequence)}${goal.consequence_days ? ' (for ' + goal.consequence_days + (goal.consequence_days === 1 ? ' day' : ' days') + ')' : ''}</div>
             </div>
             <div class="row">${session.role === 'parent' ? parentActions + `<button class="btn secondary" type="button" onclick="startEditGoal('${goal.id}')">Edit</button><button class="btn secondary" type="button" onclick="deleteGoal('${goal.id}')">Delete</button>` : childAction}</div>
           </article>
@@ -1351,7 +1460,7 @@
               <span class="pill">${reward.cost} points</span>
             </div>
             <div class="row">
-              ${session.role === 'child' ? `<button class="btn ${canClaim ? '' : 'secondary'}" type="button" ${canClaim ? '' : 'disabled'} onclick="claimReward('${reward.id}')">Redeem</button>` : ''}
+              ${session.role === 'child' ? `<button class="btn ${canClaim ? '' : 'secondary'}" type="button" ${canClaim ? '' : 'disabled'} onclick="claimReward('${reward.id}')">Redeem</button>` : `<button class="btn secondary" type="button" onclick="startEditReward('${reward.id}')">Edit</button><button class="btn danger" type="button" onclick="deleteReward('${reward.id}')">Delete</button>`}
             </div>
           </article>
         `;
@@ -1360,18 +1469,47 @@
 
     function renderConsequences() {
       const list = $('#consequenceList');
+      const isParent = session.role === 'parent';
       const child = activeChild();
-      const goals = (session.role === 'parent'
-        ? family.goals
-        : family.goals.filter((goal) => goal.child_id === child.id)
-      ).filter((goal) => goal.status === 'consequence' || (goal.status !== 'completed' && goal.due_date < todayStr()));
+      const today = todayStr();
+      const mine = (x) => isParent || x.child_id === child.id;
 
-      if (!goals.length) {
+      const active = (family.consequences || []).filter((c) => c.status === 'active' && mine(c));
+      const linked = new Set(active.filter((c) => c.goal_id).map((c) => c.goal_id));
+      // Goals in a consequence from before this version (no record), and goals whose deadline has passed
+      const goalItems = family.goals.filter((g) => mine(g) && (
+        (g.status === 'consequence' && !linked.has(g.id)) ||
+        (g.status !== 'completed' && g.status !== 'consequence' && g.due_date < today)
+      ));
+
+      if (!active.length && !goalItems.length) {
         list.innerHTML = '<div class="empty">No consequences to show.</div>';
         return;
       }
 
-      list.innerHTML = goals.map((goal) => `
+      const consequenceCard = (c) => {
+        const ended = c.ends_on && c.ends_on < today;
+        const endText = c.ends_on ? (ended ? 'Ended ' + c.ends_on : 'Ends at the end of ' + c.ends_on) : 'No end date';
+        return `
+          <article class="item">
+            <div class="item-header">
+              <div>
+                <div class="item-title">${esc(c.name)}</div>
+                <div class="meta">For ${esc(childName(c.child_id))}. Started ${c.starts_on}. ${endText}. ${esc(c.details)}</div>
+              </div>
+              <span class="pill ${ended ? 'green' : 'amber'}">${ended ? 'Ended' : 'Consequence'}</span>
+            </div>
+            ${isParent ? `
+            <div class="row">
+              <button class="btn success" type="button" onclick="resolveConsequence('${c.id}')">Mark resolved</button>
+              <button class="btn secondary" type="button" onclick="startEditConsequence('${c.id}')">Edit</button>
+              <button class="btn danger" type="button" onclick="deleteConsequence('${c.id}')">Delete</button>
+            </div>` : ''}
+          </article>
+        `;
+      };
+
+      const goalCard = (goal) => `
         <article class="item">
           <div class="item-header">
             <div>
@@ -1381,14 +1519,16 @@
             <span class="pill amber">Consequence</span>
           </div>
           <div class="email-preview">
-            <div><strong>Consequence:</strong> ${esc(goal.consequence)}</div>
+            <div><strong>Consequence:</strong> ${esc(goal.consequence)}${goal.consequence_days ? ' (for ' + goal.consequence_days + (goal.consequence_days === 1 ? ' day' : ' days') + ')' : ''}</div>
           </div>
           <div class="row">
-            ${session.role === 'parent' && goal.status !== 'consequence' ? `<button class="btn danger" type="button" onclick="applyConsequence('${goal.id}')">Apply consequence</button>` : ''}
-            ${session.role === 'parent' && goal.status === 'consequence' ? `<button class="btn success" type="button" onclick="clearConsequence('${goal.id}')">Mark resolved</button>` : ''}
+            ${isParent && goal.status !== 'consequence' ? `<button class="btn danger" type="button" onclick="applyConsequence('${goal.id}')">Apply consequence</button>` : ''}
+            ${isParent && goal.status === 'consequence' ? `<button class="btn success" type="button" onclick="clearConsequence('${goal.id}')">Mark resolved</button>` : ''}
           </div>
         </article>
-      `).join('');
+      `;
+
+      list.innerHTML = active.map(consequenceCard).join('') + goalItems.map(goalCard).join('');
     }
 
     function requestCard(request) {
@@ -1762,6 +1902,7 @@
         name: $('#goalName').value.trim(),
         details: $('#goalDetails').value.trim(),
         consequence: $('#goalConsequence').value.trim(),
+        consequence_days: $('#goalConsequenceDays').value ? Math.max(1, Math.round(Number($('#goalConsequenceDays').value))) : null,
         recurring_days: days
       };
 
@@ -1801,18 +1942,44 @@
 
     async function addReward(event) {
       event.preventDefault();
-      await db.from('rewards').insert({
-        family_id: family.id,
+      setMessage('#rewardError', '');
+      const fields = {
         name: $('#rewardName').value.trim(),
         cost: Number($('#rewardCost').value),
         limit_count: Number($('#rewardLimit').value),
-        claimed_count: 0,
         available_until: $('#rewardUntil').value
-      });
+      };
+
+      if (editing?.type === 'reward') {
+        const existing = family.rewards.find((r) => r.id === editing.id);
+        if (existing && fields.limit_count < existing.claimed_count) {
+          setMessage('#rewardError', 'Times available cannot be less than the ' + existing.claimed_count + ' already redeemed.');
+          return;
+        }
+        const res = await db.from('rewards').update(fields).eq('id', editing.id);
+        if (!check(res)) return;
+        cancelEdit();
+        await refreshAndRender();
+        return;
+      }
+
+      const { error } = await db.from('rewards').insert({ family_id: family.id, ...fields, claimed_count: 0 });
+      if (error) {
+        setMessage('#rewardError', error.message);
+        return;
+      }
       event.target.reset();
       $('#rewardCost').value = 50;
       $('#rewardLimit').value = 1;
       $('#rewardUntil').value = nextDate(14);
+      await refreshAndRender();
+    }
+
+    async function deleteReward(id) {
+      if (session.role !== 'parent') return;
+      if (!confirm('Delete this reward? This cannot be undone.')) return;
+      const res = await db.from('rewards').delete().eq('id', id);
+      if (!check(res)) return;
       await refreshAndRender();
     }
 
@@ -1836,7 +2003,7 @@
       if (!goal) return;
       const days = goal.recurring_days || [];
       if (days.length > 0) {
-        await db.from('goals').update({ status: 'active', due_date: nextOccurrence(days) }).eq('id', goalId);
+        await db.from('goals').update({ status: 'active', due_date: nextRecurringDate(days, goal.due_date) }).eq('id', goalId);
       } else {
         await db.from('goals').update({ status: 'completed' }).eq('id', goalId);
       }
@@ -1848,8 +2015,108 @@
     }
 
     async function applyConsequence(goalId) {
-      await db.from('goals').update({ status: 'consequence' }).eq('id', goalId);
+      const goal = family.goals.find((g) => g.id === goalId);
+      if (!goal) return;
+      const today = todayStr();
+      const alreadyApplied = (family.consequences || []).some((c) => c.goal_id === goalId && c.status === 'active');
+      if (!alreadyApplied) {
+        const days = goal.consequence_days;
+        const ins = await db.from('consequences').insert({
+          family_id: family.id,
+          child_id: goal.child_id,
+          goal_id: goal.id,
+          name: goal.consequence,
+          details: 'For goal: ' + goal.name,
+          starts_on: today,
+          ends_on: days ? addDays(today, days - 1) : null,
+          status: 'active'
+        });
+        if (!check(ins)) return;
+      }
+      const up = await db.from('goals').update({ status: 'consequence' }).eq('id', goalId);
+      if (!check(up)) return;
       activeTab = 'consequences';
+      await refreshAndRender();
+    }
+
+    async function addConsequence(event) {
+      event.preventDefault();
+      setMessage('#consequenceError', '');
+      const childIds = $$('#consequenceChildren input[data-child]:checked').map((box) => box.value);
+      if (!childIds.length) {
+        setMessage('#consequenceError', 'Pick at least one child.');
+        return;
+      }
+      const daysRaw = $('#consequenceDays').value;
+      const days = daysRaw ? Math.max(1, Math.round(Number(daysRaw))) : null;
+      const fields = {
+        name: $('#consequenceName').value.trim(),
+        details: $('#consequenceDetails').value.trim()
+      };
+
+      if (editing?.type === 'consequence') {
+        if (childIds.length !== 1) {
+          setMessage('#consequenceError', 'Pick exactly one child when editing.');
+          return;
+        }
+        const existing = family.consequences.find((c) => c.id === editing.id);
+        const startsOn = existing?.starts_on || todayStr();
+        const res = await db.from('consequences').update({
+          ...fields,
+          child_id: childIds[0],
+          ends_on: days ? addDays(startsOn, days - 1) : null
+        }).eq('id', editing.id);
+        if (!check(res)) return;
+        cancelEdit();
+        await refreshAndRender();
+        return;
+      }
+
+      const today = todayStr();
+      const { error } = await db.from('consequences').insert(childIds.map((id) => ({
+        family_id: family.id,
+        child_id: id,
+        ...fields,
+        starts_on: today,
+        ends_on: days ? addDays(today, days - 1) : null,
+        status: 'active'
+      })));
+      if (error) {
+        setMessage('#consequenceError', error.message);
+        return;
+      }
+      event.target.reset();
+      await refreshAndRender();
+    }
+
+    async function resolveConsequence(id) {
+      if (session.role !== 'parent') return;
+      const c = family.consequences.find((x) => x.id === id);
+      if (!c) return;
+      const res = await db.from('consequences').update({ status: 'resolved' }).eq('id', id);
+      if (!check(res)) return;
+      const goal = c.goal_id ? family.goals.find((g) => g.id === c.goal_id) : null;
+      if (goal && goal.status === 'consequence') await resetOrComplete(goal.id);
+      await refreshAndRender();
+    }
+
+    async function deleteConsequence(id) {
+      if (session.role !== 'parent') return;
+      if (!confirm('Delete this consequence? This cannot be undone.')) return;
+      const c = family.consequences.find((x) => x.id === id);
+      const res = await db.from('consequences').delete().eq('id', id);
+      if (!check(res)) return;
+      const goal = c?.goal_id ? family.goals.find((g) => g.id === c.goal_id) : null;
+      if (goal && goal.status === 'consequence') await resetOrComplete(goal.id);
+      await refreshAndRender();
+    }
+
+    async function renameFamily() {
+      if (session.role !== 'parent') return;
+      const name = $('#familyNameInput').value.trim();
+      if (!name) { alert('Please enter a family name.'); return; }
+      const res = await db.rpc('rename_family', { p_name: name });
+      if (!check(res)) return;
       await refreshAndRender();
     }
 
@@ -1931,13 +2198,17 @@
     $('#challengeForm').addEventListener('submit', addChallenge);
     $('#goalForm').addEventListener('submit', addGoal);
     $('#rewardForm').addEventListener('submit', addReward);
+    $('#consequenceForm').addEventListener('submit', addConsequence);
+    $('#rewardCancel').addEventListener('click', cancelEdit);
+    $('#consequenceCancel').addEventListener('click', cancelEdit);
+    $('#saveFamilyNameBtn').addEventListener('click', renameFamily);
     $('#challengeCancel').addEventListener('click', cancelEdit);
     $('#goalCancel').addEventListener('click', cancelEdit);
     $$('[data-auth-tab]').forEach((button) => button.addEventListener('click', () => setAuthTab(button.dataset.authTab)));
     $$('[data-onboard-tab]').forEach((button) => button.addEventListener('click', () => setOnboardTab(button.dataset.onboardTab)));
     $$('[data-tab]').forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.tab)));
     $('#goalDays').addEventListener('change', updateGoalDueState);
-    ['challengeChildren', 'goalChildren'].forEach((id) => {
+    ['challengeChildren', 'goalChildren', 'consequenceChildren'].forEach((id) => {
       $('#' + id).addEventListener('change', (e) => {
         const kids = $$('#' + id + ' input[data-child]');
         if (e.target.matches('[data-all]')) {
