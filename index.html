@@ -6,6 +6,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Parental Rewards</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#101828" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <style>
     :root {
       color-scheme: light;
@@ -516,6 +520,11 @@
         <div class="meta" id="profileDetail"></div>
       </section>
 
+      <div class="parent-only" style="display:grid;gap:8px">
+        <button class="btn secondary" type="button" id="pushBtn">Turn on notifications</button>
+        <p class="meta" id="pushStatus" style="color:#bac4d4"></p>
+      </div>
+
       <button class="btn secondary" type="button" onclick="signOut()">Sign out</button>
       <p class="sidebar-note" id="sidebarNote"></p>
     </aside>
@@ -751,6 +760,9 @@
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9xdGhvaHJiZ3JkYm5tem15dGFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0MzU0NTQsImV4cCI6MjA5OTAxMTQ1NH0.NgEgHEFtgXy7YCzgZQsLHMSSPfEemoBX-yihGBLsTsU';
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const childKey = 'parentalRewardsChild';
+
+    // Paste the PUBLIC key from generate-vapid-keys.html here (never the private key)
+    const VAPID_PUBLIC_KEY = 'BLQ2PEn7rJoZq1zHA8suGBs7GMHLp4yBhC4EBfCECa27XBFjesLJ3_w7GLRVwqDULKWpUMnpsyxgxicZjXRCvV4';
     const $ = (selector) => document.querySelector(selector);
     const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
@@ -808,6 +820,117 @@
 
     function parentEmails() {
       return family?.parent_emails || [];
+    }
+
+    let swReg = null;
+
+    async function registerServiceWorker() {
+      if (!('serviceWorker' in navigator)) return;
+      try {
+        swReg = await navigator.serviceWorker.register('sw.js');
+      } catch (e) {
+        console.warn('Service worker not registered', e);
+      }
+    }
+
+    function urlBase64ToUint8Array(base64) {
+      const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+      const raw = atob((base64 + padding).replace(/-/g, '+').replace(/_/g, '/'));
+      return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+    }
+
+    function pushSupported() {
+      return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+    }
+
+    async function currentPushSubscription() {
+      if (!pushSupported()) return null;
+      const reg = swReg || await navigator.serviceWorker.getRegistration();
+      return reg ? reg.pushManager.getSubscription() : null;
+    }
+
+    async function updatePushUI() {
+      if (!session || session.role !== 'parent') return;
+      const btn = $('#pushBtn');
+      const status = $('#pushStatus');
+      if (!btn || !status) return;
+
+      if (!pushSupported()) {
+        btn.classList.add('hidden');
+        status.textContent = /iphone|ipad|ipod/i.test(navigator.userAgent)
+          ? 'For notifications on iPhone/iPad: tap Share, choose Add to Home Screen, then open the app from your Home Screen.'
+          : 'This browser does not support notifications.';
+        return;
+      }
+      if (VAPID_PUBLIC_KEY.startsWith('PASTE')) {
+        btn.classList.add('hidden');
+        status.textContent = 'Notifications have not been set up yet.';
+        return;
+      }
+      if (Notification.permission === 'denied') {
+        btn.classList.add('hidden');
+        status.textContent = 'Notifications are blocked. Allow them for this site in your browser or phone settings.';
+        return;
+      }
+
+      btn.classList.remove('hidden');
+      const sub = await currentPushSubscription();
+      btn.textContent = sub ? 'Turn off notifications' : 'Turn on notifications';
+      status.textContent = sub
+        ? 'Notifications are on for this device.'
+        : 'Get a notification when a child finishes something.';
+    }
+
+    async function togglePush() {
+      const existing = await currentPushSubscription();
+      if (existing) {
+        const endpoint = existing.endpoint;
+        await existing.unsubscribe();
+        await db.rpc('remove_push_subscription', { p_endpoint: endpoint });
+        updatePushUI();
+        return;
+      }
+
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        updatePushUI();
+        return;
+      }
+      try {
+        const reg = swReg || await navigator.serviceWorker.register('sw.js');
+        await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+        const json = sub.toJSON();
+        const res = await db.rpc('save_push_subscription', {
+          p_endpoint: json.endpoint,
+          p_p256dh: json.keys.p256dh,
+          p_auth: json.keys.auth
+        });
+        if (!check(res)) return;
+      } catch (e) {
+        alert('Could not turn on notifications: ' + (e.message || e));
+      }
+      updatePushUI();
+    }
+
+    // Keep this device's subscription attached to whoever is signed in
+    async function syncPushSubscription() {
+      try {
+        const sub = await currentPushSubscription();
+        if (!sub) return;
+        const json = sub.toJSON();
+        await db.rpc('save_push_subscription', { p_endpoint: json.endpoint, p_p256dh: json.keys.p256dh, p_auth: json.keys.auth });
+      } catch (e) { /* not important */ }
+    }
+
+    async function removePushFromServer() {
+      try {
+        const sub = await currentPushSubscription();
+        if (sub) await db.rpc('remove_push_subscription', { p_endpoint: sub.endpoint });
+      } catch (e) { /* not important */ }
     }
 
     function check(res) {
@@ -874,13 +997,6 @@
 
     function requestMessage(request) {
       return childName(request.child_id) + ' has completed this challenge: ' + request.challenge_name;
-    }
-
-    function requestEmailHref(request) {
-      const message = requestMessage(request);
-      const subject = 'Challenge completed by ' + childName(request.child_id);
-      const body = message + '\r\n\r\nPlease check it in Parental Rewards and approve the points if it is complete.';
-      return 'mailto:' + parentEmails().map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
     }
 
     // Returns 'changed' | 'same' | 'expired' | 'error'
@@ -1009,8 +1125,10 @@
       }
       needsOnboarding = false;
       session = { role: 'parent', familyId: member.family_id, parentName: member.name, memberRole: member.role, userId: user.id };
-      activeTab = 'family';
+      activeTab = new URLSearchParams(window.location.search).get('tab') === 'requests' ? 'requests' : 'family';
+      if (window.location.search) history.replaceState(null, '', window.location.pathname);
       await refreshAndRender();
+      syncPushSubscription();
     }
 
     async function enterChild() {
@@ -1059,6 +1177,7 @@
         db.rpc('child_logout', { p_token: token });
         localStorage.removeItem(childKey);
       }
+      if (session?.role === 'parent') await removePushFromServer();
       if (session?.role === 'parent' || needsOnboarding) {
         await db.auth.signOut({ scope: 'local' });
       }
@@ -1133,6 +1252,7 @@
       renderConsequences();
       renderRequests();
       renderHistory();
+      updatePushUI();
     }
 
     function renderChildren() {
@@ -1361,7 +1481,7 @@
       list.innerHTML = challenges.map((challenge) => {
         const waitingRequest = family.requests.find((r) => r.challenge_id === challenge.id && r.status === 'waiting');
         const childAction = waitingRequest
-          ? `<button class="btn secondary" type="button" onclick="openRequestEmail('${waitingRequest.id}')">Email parent again</button><span class="pill amber">Request sent</span>`
+          ? `<span class="pill amber">Request sent, waiting for approval</span>`
           : `<button class="btn warning" type="button" onclick="sendCompletionRequest('${challenge.id}')">I finished this</button>`;
         const parentAction = doneToday(challenge)
           ? `<span class="pill green">Done today</span>`
@@ -1533,33 +1653,22 @@
 
     function requestCard(request) {
       const message = requestMessage(request);
+      const waiting = request.status === 'waiting';
       return `
         <article class="item">
           <div class="item-header">
             <div>
               <div class="item-title">${esc(message)}</div>
-              <div class="meta">Status: ${request.status}</div>
+              <div class="meta">Status: ${esc(request.status)}</div>
             </div>
-            <span class="pill amber">${request.email_sent ? 'Email opened' : 'Email draft'}</span>
+            <span class="pill ${waiting ? 'amber' : 'green'}">${waiting ? 'Waiting' : 'Approved'}</span>
           </div>
-          <div class="email-preview">
-            <div><strong>To:</strong> ${esc(parentEmails().join(', '))}</div>
-            <div><strong>Subject:</strong> Challenge completed by ${esc(childName(request.child_id))}</div>
-            <div><strong>Message:</strong> ${esc(message)}</div>
-          </div>
+          ${session.role === 'parent' && waiting ? `
           <div class="row">
-            ${session.role === 'child' && request.status === 'waiting' ? `<button class="btn warning" type="button" onclick="openRequestEmail('${request.id}')">Open email to parent</button>` : ''}
-            ${session.role === 'parent' && request.status === 'waiting' ? `<button class="btn success" type="button" onclick="approveChallenge('${request.challenge_id}')">Approve and add points</button>` : ''}
-          </div>
+            <button class="btn success" type="button" onclick="approveChallenge('${request.challenge_id}')">Approve and add points</button>
+          </div>` : ''}
         </article>
       `;
-    }
-
-    function goalRequestEmailHref(goal) {
-      const kid = childName(goal.child_id);
-      const subject = 'Goal completed by ' + kid;
-      const body = kid + ' has completed this goal: ' + goal.name + '\r\n\r\nPlease check it in Parental Rewards and approve it if it is complete.';
-      return 'mailto:' + parentEmails().map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
     }
 
     function goalRequestCard(goal) {
@@ -1574,16 +1683,10 @@
             </div>
             <span class="pill amber">Goal</span>
           </div>
-          <div class="email-preview">
-            <div><strong>To:</strong> ${esc(parentEmails().join(', '))}</div>
-            <div><strong>Subject:</strong> Goal completed by ${esc(childName(goal.child_id))}</div>
-            <div><strong>Message:</strong> ${esc(message)}</div>
-          </div>
+          ${isParent ? `
           <div class="row">
-            ${isParent
-              ? `<button class="btn success" type="button" onclick="approveGoal('${goal.id}')">Approve goal</button>`
-              : `<button class="btn warning" type="button" onclick="openGoalEmail('${goal.id}')">Open email to parent</button>`}
-          </div>
+            <button class="btn success" type="button" onclick="approveGoal('${goal.id}')">Approve goal</button>
+          </div>` : ''}
         </article>
       `;
     }
@@ -1988,13 +2091,6 @@
       if (!check(res)) return;
       activeTab = 'requests';
       await refreshAndRender();
-      openGoalEmail(goalId);
-    }
-
-    function openGoalEmail(goalId) {
-      const goal = family.goals.find((g) => g.id === goalId);
-      if (!goal) return;
-      window.location.href = goalRequestEmailHref(goal);
     }
 
     // Recurring goals go back to active with the next due date; one-time goals are completed
@@ -2134,15 +2230,6 @@
       }
       activeTab = 'requests';
       await refreshAndRender();
-      if (requestId) openRequestEmail(requestId);
-    }
-
-    async function openRequestEmail(requestId) {
-      const request = family.requests.find((item) => item.id === requestId);
-      if (!request) return;
-      await db.rpc('child_mark_email_sent', { p_token: session.token, p_request_id: requestId });
-      window.location.href = requestEmailHref(request);
-      await refreshAndRender();
     }
 
     async function approveChallenge(challengeId) {
@@ -2202,6 +2289,8 @@
     $('#rewardCancel').addEventListener('click', cancelEdit);
     $('#consequenceCancel').addEventListener('click', cancelEdit);
     $('#saveFamilyNameBtn').addEventListener('click', renameFamily);
+    $('#pushBtn').addEventListener('click', togglePush);
+    registerServiceWorker();
     $('#challengeCancel').addEventListener('click', cancelEdit);
     $('#goalCancel').addEventListener('click', cancelEdit);
     $$('[data-auth-tab]').forEach((button) => button.addEventListener('click', () => setAuthTab(button.dataset.authTab)));
