@@ -1,0 +1,13 @@
+{
+  "name": "Parental Rewards",
+  "short_name": "Rewards",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f7fa",
+  "theme_color": "#101828",
+  "icons": [
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "favicon.png", "sizes": "any", "type": "image/png" }
+  ]
+}
