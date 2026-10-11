@@ -262,6 +262,15 @@
 
     textarea { min-height: 86px; resize: vertical; }
 
+    .day-picker { display: flex; gap: 6px; flex-wrap: wrap; }
+    .day-picker label {
+      display: flex; align-items: center; gap: 4px;
+      padding: 6px 10px; border: 1px solid var(--line);
+      border-radius: 999px; background: #fff;
+      color: var(--ink); font-size: 13px; cursor: pointer;
+    }
+    .day-picker input { width: auto; margin: 0; }
+
     .row {
       display: flex;
       gap: 10px;
@@ -504,6 +513,17 @@
             <label>Assign to
               <select id="challengeChild"></select>
             </label>
+            <label>Repeat on (leave all unticked for one-time)
+              <div class="day-picker" id="challengeDays">
+                <label><input type="checkbox" value="1" /> Mon</label>
+                <label><input type="checkbox" value="2" /> Tue</label>
+                <label><input type="checkbox" value="3" /> Wed</label>
+                <label><input type="checkbox" value="4" /> Thu</label>
+                <label><input type="checkbox" value="5" /> Fri</label>
+                <label><input type="checkbox" value="6" /> Sat</label>
+                <label><input type="checkbox" value="0" /> Sun</label>
+              </div>
+            </label>
             <label>Details
               <textarea id="challengeDetails" placeholder="What should they do?"></textarea>
             </label>
@@ -529,6 +549,17 @@
             </label>
             <label>Due date
               <input id="goalDueDate" type="date" required />
+            </label>
+            <label>Repeat on (leave all unticked for one-time)
+              <div class="day-picker" id="goalDays">
+                <label><input type="checkbox" value="1" /> Mon</label>
+                <label><input type="checkbox" value="2" /> Tue</label>
+                <label><input type="checkbox" value="3" /> Wed</label>
+                <label><input type="checkbox" value="4" /> Thu</label>
+                <label><input type="checkbox" value="5" /> Fri</label>
+                <label><input type="checkbox" value="6" /> Sat</label>
+                <label><input type="checkbox" value="0" /> Sun</label>
+              </div>
             </label>
             <label>Consequence
               <textarea id="goalConsequence" required placeholder="No game time until it is completed"></textarea>
@@ -604,6 +635,8 @@
     let family = null;
     let loading = false;
 
+    const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
     function saveSession() {
       localStorage.setItem(sessionKey, JSON.stringify(session));
     }
@@ -616,6 +649,30 @@
       const date = new Date();
       date.setDate(date.getDate() + days);
       return date.toISOString().slice(0, 10);
+    }
+
+    // Local-time "today" (YYYY-MM-DD), avoids off-by-one around midnight
+    function todayStr() {
+      const d = new Date();
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    // Next date (after today) that falls on one of the selected weekdays
+    function nextOccurrence(days) {
+      for (let i = 1; i <= 7; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() + i);
+        if (days.includes(d.getDay())) {
+          return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+      }
+      return todayStr();
+    }
+
+    function repeatLabel(days) {
+      return (days || []).length
+        ? ' Repeats: ' + [...days].sort().map((d) => DAY_NAMES[d]).join(', ') + '.'
+        : '';
     }
 
     function childName(childId) {
@@ -770,6 +827,11 @@
             </div>
             <span class="pill green">${child.points} points</span>
           </div>
+          ${session.role === 'parent' ? `
+          <div class="row">
+            <input id="points-${child.id}" type="number" min="0" step="1" value="${child.points}" style="width:120px" aria-label="Points for ${child.name}" />
+            <button class="btn secondary" type="button" onclick="setChildPoints('${child.id}')">Save points</button>
+          </div>` : ''}
         </article>
       `).join('');
     }
@@ -785,9 +847,16 @@
     function renderChallenges() {
       const list = $('#challengeList');
       const child = activeChild();
+      const today = todayStr();
+      const dow = new Date().getDay();
+
+      const isRecurring = (c) => (c.recurring_days || []).length > 0;
+      const doneToday = (c) => c.last_completed_date === today;
+      const dueToday = (c) => !isRecurring(c) || c.recurring_days.includes(dow);
+
       const challenges = session.role === 'parent'
         ? family.challenges
-        : family.challenges.filter((challenge) => challenge.child_id === child.id);
+        : family.challenges.filter((c) => c.child_id === child.id && dueToday(c) && !doneToday(c));
 
       if (!challenges.length) {
         list.innerHTML = '<div class="empty">No active challenges yet.</div>';
@@ -795,21 +864,23 @@
       }
 
       list.innerHTML = challenges.map((challenge) => {
-        const waitingRequest = family.requests.find((request) => request.challenge_id === challenge.id && request.status === 'waiting');
+        const waitingRequest = family.requests.find((r) => r.challenge_id === challenge.id && r.status === 'waiting');
         const childAction = waitingRequest
           ? `<button class="btn secondary" type="button" onclick="openRequestEmail('${waitingRequest.id}')">Email parent again</button><span class="pill amber">Request sent</span>`
           : `<button class="btn warning" type="button" onclick="sendCompletionRequest('${challenge.id}')">I finished this</button>`;
-        const parentAction = `<button class="btn success" type="button" onclick="approveChallenge('${challenge.id}')">Approve complete</button>`;
+        const parentAction = doneToday(challenge)
+          ? `<span class="pill green">Done today</span>`
+          : `<button class="btn success" type="button" onclick="approveChallenge('${challenge.id}')">Approve complete</button>`;
         return `
           <article class="item">
             <div class="item-header">
               <div>
                 <div class="item-title">${challenge.name}</div>
-                <div class="meta">For ${childName(challenge.child_id)}. ${challenge.details || ''}</div>
+                <div class="meta">For ${childName(challenge.child_id)}.${repeatLabel(challenge.recurring_days)} ${challenge.details || ''}</div>
               </div>
               <span class="pill green">${challenge.points} points</span>
             </div>
-            <div class="row">${session.role === 'parent' ? parentAction : childAction}</div>
+            <div class="row">${session.role === 'parent' ? parentAction + `<button class="btn danger" type="button" onclick="deleteChallenge('${challenge.id}')">Delete</button>` : childAction}</div>
           </article>
         `;
       }).join('');
@@ -836,7 +907,6 @@
       }
 
       list.innerHTML = goals.map((goal) => {
-        const isOpen = goal.status === 'active' || goal.status === 'waiting';
         const childAction = goal.status === 'active'
           ? `<button class="btn warning" type="button" onclick="markGoalDone('${goal.id}')">I completed this goal</button>`
           : '';
@@ -851,14 +921,14 @@
             <div class="item-header">
               <div>
                 <div class="item-title">${goal.name}</div>
-                <div class="meta">For ${childName(goal.child_id)}. Due ${goal.due_date}. ${goal.details || ''}</div>
+                <div class="meta">For ${childName(goal.child_id)}. Due ${goal.due_date}.${repeatLabel(goal.recurring_days)} ${goal.details || ''}</div>
               </div>
               <span class="pill ${goal.status === 'completed' ? 'green' : goal.due_date < nextDate(0) || goal.status === 'consequence' ? 'amber' : ''}">${goalStatusLabel(goal)}</span>
             </div>
             <div class="email-preview">
               <div><strong>Consequence:</strong> ${goal.consequence}</div>
             </div>
-            <div class="row">${session.role === 'parent' ? parentActions : childAction}</div>
+            <div class="row">${session.role === 'parent' ? parentActions + `<button class="btn secondary" type="button" onclick="deleteGoal('${goal.id}')">Delete</button>` : childAction}</div>
           </article>
         `;
       }).join('');
@@ -1058,12 +1128,14 @@
     async function addChallenge(event) {
       event.preventDefault();
       if (!family.children.length) return;
+      const days = $$('#challengeDays input:checked').map((box) => Number(box.value));
       await db.from('challenges').insert({
         family_id: family.id,
         child_id: $('#challengeChild').value,
         name: $('#challengeName').value.trim(),
         points: Number($('#challengePoints').value),
-        details: $('#challengeDetails').value.trim()
+        details: $('#challengeDetails').value.trim(),
+        recurring_days: days
       });
       event.target.reset();
       $('#challengePoints').value = 10;
@@ -1073,6 +1145,7 @@
     async function addGoal(event) {
       event.preventDefault();
       if (!family.children.length) return;
+      const days = $$('#goalDays input:checked').map((box) => Number(box.value));
       await db.from('goals').insert({
         family_id: family.id,
         child_id: $('#goalChild').value,
@@ -1080,7 +1153,8 @@
         details: $('#goalDetails').value.trim(),
         consequence: $('#goalConsequence').value.trim(),
         due_date: $('#goalDueDate').value,
-        status: 'active'
+        status: 'active',
+        recurring_days: days
       });
       event.target.reset();
       $('#goalDueDate').value = nextDate(7);
@@ -1110,8 +1184,20 @@
       await refreshAndRender();
     }
 
+    // Recurring goals go back to active with the next due date; one-time goals are completed
+    async function resetOrComplete(goalId) {
+      const goal = family.goals.find((item) => item.id === goalId);
+      if (!goal) return;
+      const days = goal.recurring_days || [];
+      if (days.length > 0) {
+        await db.from('goals').update({ status: 'active', due_date: nextOccurrence(days) }).eq('id', goalId);
+      } else {
+        await db.from('goals').update({ status: 'completed' }).eq('id', goalId);
+      }
+    }
+
     async function approveGoal(goalId) {
-      await db.from('goals').update({ status: 'completed' }).eq('id', goalId);
+      await resetOrComplete(goalId);
       activeTab = 'goals';
       await refreshAndRender();
     }
@@ -1123,7 +1209,7 @@
     }
 
     async function clearConsequence(goalId) {
-      await db.from('goals').update({ status: 'completed' }).eq('id', goalId);
+      await resetOrComplete(goalId);
       activeTab = 'consequences';
       await refreshAndRender();
     }
@@ -1165,8 +1251,41 @@
       if (!challenge || !child) return;
 
       await db.from('children').update({ points: child.points + challenge.points }).eq('id', child.id);
-      await db.from('completion_requests').update({ status: 'approved' }).eq('challenge_id', challengeId);
+      await db.from('completion_requests').update({ status: 'approved' })
+        .eq('challenge_id', challengeId).eq('status', 'waiting');
+
+      if ((challenge.recurring_days || []).length > 0) {
+        // Recurring: keep it, just mark done for today
+        await db.from('challenges').update({ last_completed_date: todayStr() }).eq('id', challengeId);
+      } else {
+        // One-time: remove as before
+        await db.from('challenges').delete().eq('id', challengeId);
+      }
+      await refreshAndRender();
+    }
+
+    async function setChildPoints(childId) {
+      if (session.role !== 'parent') return;
+      const input = document.getElementById('points-' + childId);
+      const value = Math.max(0, Math.round(Number(input.value)));
+      if (!Number.isFinite(value)) return;
+      await db.from('children').update({ points: value }).eq('id', childId);
+      await refreshAndRender();
+    }
+
+    async function deleteChallenge(challengeId) {
+      if (session.role !== 'parent') return;
+      if (!confirm('Delete this challenge? This cannot be undone.')) return;
+      // Clear any pending request so it doesn't linger in the Requests tab
+      await db.from('completion_requests').delete().eq('challenge_id', challengeId).eq('status', 'waiting');
       await db.from('challenges').delete().eq('id', challengeId);
+      await refreshAndRender();
+    }
+
+    async function deleteGoal(goalId) {
+      if (session.role !== 'parent') return;
+      if (!confirm('Delete this goal? This cannot be undone.')) return;
+      await db.from('goals').delete().eq('id', goalId);
       await refreshAndRender();
     }
 
@@ -1196,4 +1315,3 @@
   </script>
 </body>
 </html>
-
