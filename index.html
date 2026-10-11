@@ -1088,6 +1088,10 @@
           </div>
           ${session.role === 'parent' ? `
           <div class="row">
+            <input id="name-${child.id}" value="${esc(child.name)}" maxlength="40" style="width:200px" aria-label="Name for ${esc(child.name)}" />
+            <button class="btn secondary" type="button" onclick="renameChild('${child.id}')">Save name</button>
+          </div>
+          <div class="row">
             <input id="points-${child.id}" type="number" min="0" step="1" value="${child.points}" style="width:120px" aria-label="Points for ${esc(child.name)}" />
             <button class="btn secondary" type="button" onclick="setChildPoints('${child.id}')">Save points</button>
             <button class="btn danger" type="button" onclick="removeChild('${child.id}')">Remove child</button>
@@ -1117,7 +1121,9 @@
     function renderParents() {
       const isOwner = session.memberRole === 'owner';
       $('#familyCodeDisplay').textContent = family.family_code || '';
-      $('#parentsList').innerHTML = (family.parents || []).map((p) => `
+      $('#parentsList').innerHTML = (family.parents || []).map((p) => {
+        const canEdit = p.user_id === session.userId || isOwner;
+        return `
         <article class="item">
           <div class="item-header">
             <div>
@@ -1126,8 +1132,14 @@
             </div>
             ${isOwner && p.role !== 'owner' ? `<button class="btn secondary" type="button" onclick="removeParent('${p.user_id}')">Remove</button>` : ''}
           </div>
+          ${canEdit ? `
+          <div class="row">
+            <input id="parent-name-${p.user_id}" value="${esc(p.name)}" maxlength="40" style="width:200px" aria-label="Name for ${esc(p.name)}" />
+            <button class="btn secondary" type="button" onclick="renameParent('${p.user_id}')">Save name</button>
+          </div>` : ''}
         </article>
-      `).join('');
+      `;
+      }).join('');
     }
 
     function renderHistory() {
@@ -1270,6 +1282,7 @@
       if (goal.status === 'completed') return 'Completed';
       if (goal.status === 'consequence') return 'Consequence active';
       if (goal.status === 'waiting') return 'Waiting for approval';
+      if (goal.due_date === todayStr()) return 'Due today';
       if (goal.due_date < todayStr()) return 'Overdue';
       return 'Active';
     }
@@ -1293,7 +1306,9 @@
         const parentActions = goal.status === 'waiting'
           ? `<button class="btn success" type="button" onclick="approveGoal('${goal.id}')">Approve goal</button>`
           : goal.status === 'active'
-            ? `<button class="btn danger" type="button" onclick="applyConsequence('${goal.id}')">Apply consequence</button>`
+            ? (goal.due_date < todayStr()
+              ? `<button class="btn danger" type="button" onclick="applyConsequence('${goal.id}')">Apply consequence</button>`
+              : `<span class="meta">Deadline ends at the end of ${goal.due_date}.</span>`)
             : '';
 
         return `
@@ -1606,6 +1621,29 @@
         return;
       }
       event.target.reset();
+      await refreshAndRender();
+    }
+
+    async function renameChild(childId) {
+      if (session.role !== 'parent') return;
+      const name = document.getElementById('name-' + childId).value.trim();
+      if (!name) { alert('Please enter a name.'); return; }
+      if (family.children.some((c) => c.id !== childId && c.name.toLowerCase() === name.toLowerCase())) {
+        alert('Another child already has that name.');
+        return;
+      }
+      const res = await db.from('children').update({ name }).eq('id', childId);
+      if (!check(res)) return;
+      await refreshAndRender();
+    }
+
+    async function renameParent(userId) {
+      if (session.role !== 'parent') return;
+      const name = document.getElementById('parent-name-' + userId).value.trim();
+      if (!name) { alert('Please enter a name.'); return; }
+      const res = await db.rpc('rename_parent', { p_user_id: userId, p_name: name });
+      if (!check(res)) return;
+      if (userId === session.userId) session.parentName = name;
       await refreshAndRender();
     }
 
