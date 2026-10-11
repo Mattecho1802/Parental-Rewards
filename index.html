@@ -1415,41 +1415,88 @@
       `;
     }
 
+    function goalRequestEmailHref(goal) {
+      const kid = childName(goal.child_id);
+      const subject = 'Goal completed by ' + kid;
+      const body = kid + ' has completed this goal: ' + goal.name + '\r\n\r\nPlease check it in Parental Rewards and approve it if it is complete.';
+      return 'mailto:' + parentEmails().map(encodeURIComponent).join(',') + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+    }
+
+    function goalRequestCard(goal) {
+      const message = childName(goal.child_id) + ' has completed this goal: ' + goal.name;
+      const isParent = session.role === 'parent';
+      return `
+        <article class="item">
+          <div class="item-header">
+            <div>
+              <div class="item-title">${esc(message)}</div>
+              <div class="meta">Goal due ${goal.due_date}. Status: waiting for approval</div>
+            </div>
+            <span class="pill amber">Goal</span>
+          </div>
+          <div class="email-preview">
+            <div><strong>To:</strong> ${esc(parentEmails().join(', '))}</div>
+            <div><strong>Subject:</strong> Goal completed by ${esc(childName(goal.child_id))}</div>
+            <div><strong>Message:</strong> ${esc(message)}</div>
+          </div>
+          <div class="row">
+            ${isParent
+              ? `<button class="btn success" type="button" onclick="approveGoal('${goal.id}')">Approve goal</button>`
+              : `<button class="btn warning" type="button" onclick="openGoalEmail('${goal.id}')">Open email to parent</button>`}
+          </div>
+        </article>
+      `;
+    }
+
+    // Tab labels like "Requests (3)" for parents, and the browser tab title
+    function updateBadges() {
+      const isParent = session.role === 'parent';
+      const waitingChallenges = family.requests.filter((r) => r.status === 'waiting').length;
+      const waitingGoals = family.goals.filter((g) => g.status === 'waiting').length;
+      const total = waitingChallenges + waitingGoals;
+      const label = (name, n) => (isParent && n ? name + ' (' + n + ')' : name);
+      const requestsTab = $('[data-tab="requests"]');
+      requestsTab.textContent = label('Requests', total);
+      requestsTab.style.order = isParent ? -1 : 0; // first tab for parents
+      $('[data-tab="challenges"]').textContent = label('Challenges', waitingChallenges);
+      $('[data-tab="goals"]').textContent = label('Goals', waitingGoals);
+      document.title = isParent && total ? '(' + total + ') Parental Rewards' : 'Parental Rewards';
+    }
+
     function renderRequests() {
       const list = $('#requestList');
       const isParent = session.role === 'parent';
       const child = activeChild();
-      const requests = isParent
-        ? family.requests
-        : family.requests.filter((request) => request.child_id === child.id);
+      const requests = isParent ? family.requests : family.requests.filter((r) => r.child_id === child.id);
+      const waitingGoals = family.goals.filter((g) => g.status === 'waiting' && (isParent || g.child_id === child.id));
 
-      // Pending count badge on the tab (parents)
-      const waitingTotal = family.requests.filter((r) => r.status === 'waiting').length;
-      const requestsTab = $('[data-tab="requests"]');
-      requestsTab.textContent = isParent && waitingTotal ? 'Requests (' + waitingTotal + ')' : 'Requests';
-      requestsTab.style.order = isParent ? -1 : 0; // first tab for parents
-      document.title = isParent && waitingTotal ? '(' + waitingTotal + ') Parental Rewards' : 'Parental Rewards';
+      updateBadges();
 
-      if (!requests.length) {
+      if (!requests.length && !waitingGoals.length) {
         list.innerHTML = '<div class="empty">No completion requests yet.</div>';
         return;
       }
 
       if (!isParent) {
-        list.innerHTML = requests.map(requestCard).join('');
+        list.innerHTML = waitingGoals.map(goalRequestCard).join('') + requests.map(requestCard).join('');
         return;
       }
 
       // Parents: grouped by child, "Name (waiting count):" then that child's requests
       list.innerHTML = family.children.map((kid) => {
-        const kidRequests = requests
-          .filter((r) => r.child_id === kid.id)
-          .sort((x, y) => (y.status === 'waiting') - (x.status === 'waiting'));
-        const waiting = kidRequests.filter((r) => r.status === 'waiting').length;
+        const kidRequests = requests.filter((r) => r.child_id === kid.id);
+        const waitingRequests = kidRequests.filter((r) => r.status === 'waiting');
+        const doneRequests = kidRequests.filter((r) => r.status !== 'waiting');
+        const kidGoals = waitingGoals.filter((g) => g.child_id === kid.id);
+        const cards = [
+          ...waitingRequests.map(requestCard),
+          ...kidGoals.map(goalRequestCard),
+          ...doneRequests.map(requestCard)
+        ];
         return `
           <section class="list">
-            <h3>${esc(kid.name)} (${waiting}):</h3>
-            ${kidRequests.length ? kidRequests.map(requestCard).join('') : '<div class="empty">No requests.</div>'}
+            <h3>${esc(kid.name)} (${waitingRequests.length + kidGoals.length}):</h3>
+            ${cards.length ? cards.join('') : '<div class="empty">No requests.</div>'}
           </section>
         `;
       }).join('');
@@ -1772,8 +1819,15 @@
     async function markGoalDone(goalId) {
       const res = await db.rpc('child_mark_goal_done', { p_token: session.token, p_goal_id: goalId });
       if (!check(res)) return;
-      activeTab = 'goals';
+      activeTab = 'requests';
       await refreshAndRender();
+      openGoalEmail(goalId);
+    }
+
+    function openGoalEmail(goalId) {
+      const goal = family.goals.find((g) => g.id === goalId);
+      if (!goal) return;
+      window.location.href = goalRequestEmailHref(goal);
     }
 
     // Recurring goals go back to active with the next due date; one-time goals are completed
@@ -1790,7 +1844,6 @@
 
     async function approveGoal(goalId) {
       await resetOrComplete(goalId);
-      activeTab = 'goals';
       await refreshAndRender();
     }
 
