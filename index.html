@@ -590,6 +590,7 @@
 
       <div class="parent-only" style="display:grid;gap:8px">
         <button class="btn secondary" type="button" id="pushBtn">Turn on notifications</button>
+        <button class="btn secondary hidden" type="button" id="pushTestBtn">Send test notification</button>
         <p class="meta" id="pushStatus" style="color:#bac4d4"></p>
       </div>
 
@@ -937,7 +938,9 @@
       if (!session || session.role !== 'parent') return;
       const btn = $('#pushBtn');
       const status = $('#pushStatus');
+      const testBtn = $('#pushTestBtn');
       if (!btn || !status) return;
+      testBtn.classList.add('hidden');
 
       if (!pushSupported()) {
         btn.classList.add('hidden');
@@ -961,9 +964,29 @@
       const sub = await currentPushSubscription();
       pushIsOn = !!sub;
       btn.textContent = sub ? 'Turn off notifications' : 'Turn on notifications';
+      testBtn.classList.toggle('hidden', !sub);
       status.textContent = sub
-        ? 'Notifications are on for this device.'
-        : 'Get a notification when a child finishes something.';
+        ? 'Notifications are on for this device. Your browser already allowed them, so it will not ask again.'
+        : Notification.permission === 'granted'
+          ? 'Allowed in your browser. Press the button to finish setting up this device.'
+          : 'Get a notification when a child finishes something.';
+    }
+
+    async function sendTestPush() {
+      const status = $('#pushStatus');
+      status.textContent = 'Sending a test...';
+      const { data, error } = await db.functions.invoke('send-push', { body: { test: true } });
+      if (error) {
+        status.textContent = 'The test failed: ' + (error.message || 'could not reach the send-push function. Is it deployed?');
+        return;
+      }
+      if (!data || !data.devices) {
+        status.textContent = 'This device is not registered on the server yet. Turn notifications off, then on again (and check update-push.sql has been run).';
+        return;
+      }
+      status.textContent = data.sent
+        ? 'Test sent to ' + data.sent + (data.sent === 1 ? ' device' : ' devices') + '. It should appear in a few seconds.'
+        : 'The server could not deliver to this device. Check the send-push secrets (the public and private keys must be the same pair).';
     }
 
     async function togglePush() {
@@ -2553,6 +2576,7 @@
     $('#consequenceCancel').addEventListener('click', cancelEdit);
     $('#saveFamilyNameBtn').addEventListener('click', renameFamily);
     $('#pushBtn').addEventListener('click', togglePush);
+    $('#pushTestBtn').addEventListener('click', sendTestPush);
     registerServiceWorker();
     $('#challengeCancel').addEventListener('click', cancelEdit);
     $('#goalCancel').addEventListener('click', cancelEdit);
