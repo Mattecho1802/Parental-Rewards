@@ -465,7 +465,9 @@
       <nav class="tabs" aria-label="Dashboard tabs">
         <button class="tab active parent-only" data-tab="family">Family</button>
         <button class="tab" data-tab="challenges">Challenges</button>
+        <button class="tab" data-tab="goals">Goals</button>
         <button class="tab" data-tab="rewards">Rewards</button>
+        <button class="tab" data-tab="consequences">Consequences</button>
         <button class="tab" data-tab="requests">Requests</button>
       </nav>
 
@@ -515,6 +517,35 @@
         </div>
       </section>
 
+      <section id="goals" class="tab-panel grid hidden">
+        <div class="panel span-5 parent-only">
+          <h2>Add goal</h2>
+          <form id="goalForm" class="form-grid">
+            <label>Goal name
+              <input id="goalName" required placeholder="Finish homework by Friday" />
+            </label>
+            <label>Assign to
+              <select id="goalChild"></select>
+            </label>
+            <label>Due date
+              <input id="goalDueDate" type="date" required />
+            </label>
+            <label>Consequence
+              <textarea id="goalConsequence" required placeholder="No game time until it is completed"></textarea>
+            </label>
+            <label>Details
+              <textarea id="goalDetails" placeholder="What does complete look like?"></textarea>
+            </label>
+            <button class="btn" type="submit">Create goal</button>
+          </form>
+        </div>
+
+        <div class="panel span-7">
+          <h2>Goals</h2>
+          <div id="goalList" class="list"></div>
+        </div>
+      </section>
+
       <section id="rewards" class="tab-panel grid hidden">
         <div class="panel span-5 parent-only">
           <h2>Add reward</h2>
@@ -540,6 +571,13 @@
         <div class="panel span-7">
           <h2>Reward shop</h2>
           <div id="rewardList" class="list"></div>
+        </div>
+      </section>
+
+      <section id="consequences" class="tab-panel grid hidden">
+        <div class="panel span-12">
+          <h2>Consequences</h2>
+          <div id="consequenceList" class="list"></div>
         </div>
       </section>
 
@@ -618,9 +656,10 @@
         return;
       }
 
-      const [childrenRes, challengesRes, rewardsRes, requestsRes] = await Promise.all([
+      const [childrenRes, challengesRes, goalsRes, rewardsRes, requestsRes] = await Promise.all([
         db.from('children').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('challenges').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
+        db.from('goals').select('*').eq('family_id', familyId).order('due_date', { ascending: true }),
         db.from('rewards').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('completion_requests').select('*').eq('family_id', familyId).order('created_at', { ascending: false })
       ]);
@@ -629,6 +668,7 @@
         ...familyRow,
         children: childrenRes.data || [],
         challenges: challengesRes.data || [],
+        goals: goalsRes.data || [],
         rewards: rewardsRes.data || [],
         requests: requestsRes.data || []
       };
@@ -689,12 +729,12 @@
       $('#profileDetail').textContent = isParent ? 'Family code: ' + family.family_code : family.family_name;
       $('#sidebarNote').textContent = isParent
         ? 'Give children the family code, their name, and their passcode so they can sign in.'
-        : 'Finish challenges, request approval, and use points for rewards.';
+        : 'Finish challenges, complete goals, and keep track of rewards and consequences.';
 
       $('#pageTitle').textContent = isParent ? family.family_name + ' Dashboard' : child.name + "'s Dashboard";
       $('#pageSubtitle').textContent = isParent
-        ? 'Add children, create challenges, approve completed work, and manage rewards.'
-        : 'View your challenges, request approval, and redeem available rewards.';
+        ? 'Add children, create challenges and goals, approve work, and manage rewards and consequences.'
+        : 'View your challenges and goals, request approval, and redeem available rewards.';
       $('#scoreLabel').textContent = isParent ? 'Family points' : 'My points';
       $('#scoreValue').textContent = isParent
         ? family.children.reduce((sum, kid) => sum + kid.points, 0)
@@ -707,7 +747,10 @@
       renderChildren();
       renderChallengeSelect();
       renderChallenges();
+      renderGoalSelect();
+      renderGoals();
       renderRewards();
+      renderConsequences();
       renderRequests();
     }
 
@@ -733,6 +776,10 @@
 
     function renderChallengeSelect() {
       $('#challengeChild').innerHTML = family.children.map((child) => `<option value="${child.id}">${child.name}</option>`).join('');
+    }
+
+    function renderGoalSelect() {
+      $('#goalChild').innerHTML = family.children.map((child) => `<option value="${child.id}">${child.name}</option>`).join('');
     }
 
     function renderChallenges() {
@@ -768,6 +815,55 @@
       }).join('');
     }
 
+    function goalStatusLabel(goal) {
+      if (goal.status === 'completed') return 'Completed';
+      if (goal.status === 'consequence') return 'Consequence active';
+      if (goal.status === 'waiting') return 'Waiting for approval';
+      if (goal.due_date < nextDate(0)) return 'Overdue';
+      return 'Active';
+    }
+
+    function renderGoals() {
+      const list = $('#goalList');
+      const child = activeChild();
+      const goals = session.role === 'parent'
+        ? family.goals
+        : family.goals.filter((goal) => goal.child_id === child.id);
+
+      if (!goals.length) {
+        list.innerHTML = '<div class="empty">No goals yet.</div>';
+        return;
+      }
+
+      list.innerHTML = goals.map((goal) => {
+        const isOpen = goal.status === 'active' || goal.status === 'waiting';
+        const childAction = goal.status === 'active'
+          ? `<button class="btn warning" type="button" onclick="markGoalDone('${goal.id}')">I completed this goal</button>`
+          : '';
+        const parentActions = goal.status === 'waiting'
+          ? `<button class="btn success" type="button" onclick="approveGoal('${goal.id}')">Approve goal</button>`
+          : goal.status === 'active'
+            ? `<button class="btn danger" type="button" onclick="applyConsequence('${goal.id}')">Apply consequence</button>`
+            : '';
+
+        return `
+          <article class="item">
+            <div class="item-header">
+              <div>
+                <div class="item-title">${goal.name}</div>
+                <div class="meta">For ${childName(goal.child_id)}. Due ${goal.due_date}. ${goal.details || ''}</div>
+              </div>
+              <span class="pill ${goal.status === 'completed' ? 'green' : goal.due_date < nextDate(0) || goal.status === 'consequence' ? 'amber' : ''}">${goalStatusLabel(goal)}</span>
+            </div>
+            <div class="email-preview">
+              <div><strong>Consequence:</strong> ${goal.consequence}</div>
+            </div>
+            <div class="row">${session.role === 'parent' ? parentActions : childAction}</div>
+          </article>
+        `;
+      }).join('');
+    }
+
     function renderRewards() {
       const list = $('#rewardList');
       if (!family.rewards.length) {
@@ -795,6 +891,39 @@
           </article>
         `;
       }).join('');
+    }
+
+    function renderConsequences() {
+      const list = $('#consequenceList');
+      const child = activeChild();
+      const goals = (session.role === 'parent'
+        ? family.goals
+        : family.goals.filter((goal) => goal.child_id === child.id)
+      ).filter((goal) => goal.status === 'consequence' || (goal.status !== 'completed' && goal.due_date < nextDate(0)));
+
+      if (!goals.length) {
+        list.innerHTML = '<div class="empty">No consequences to show.</div>';
+        return;
+      }
+
+      list.innerHTML = goals.map((goal) => `
+        <article class="item">
+          <div class="item-header">
+            <div>
+              <div class="item-title">${goal.name}</div>
+              <div class="meta">For ${childName(goal.child_id)}. Due ${goal.due_date}. Status: ${goalStatusLabel(goal)}</div>
+            </div>
+            <span class="pill amber">Consequence</span>
+          </div>
+          <div class="email-preview">
+            <div><strong>Consequence:</strong> ${goal.consequence}</div>
+          </div>
+          <div class="row">
+            ${session.role === 'parent' && goal.status !== 'consequence' ? `<button class="btn danger" type="button" onclick="applyConsequence('${goal.id}')">Apply consequence</button>` : ''}
+            ${session.role === 'parent' && goal.status === 'consequence' ? `<button class="btn success" type="button" onclick="clearConsequence('${goal.id}')">Mark resolved</button>` : ''}
+          </div>
+        </article>
+      `).join('');
     }
 
     function renderRequests() {
@@ -941,6 +1070,23 @@
       await refreshAndRender();
     }
 
+    async function addGoal(event) {
+      event.preventDefault();
+      if (!family.children.length) return;
+      await db.from('goals').insert({
+        family_id: family.id,
+        child_id: $('#goalChild').value,
+        name: $('#goalName').value.trim(),
+        details: $('#goalDetails').value.trim(),
+        consequence: $('#goalConsequence').value.trim(),
+        due_date: $('#goalDueDate').value,
+        status: 'active'
+      });
+      event.target.reset();
+      $('#goalDueDate').value = nextDate(7);
+      await refreshAndRender();
+    }
+
     async function addReward(event) {
       event.preventDefault();
       await db.from('rewards').insert({
@@ -955,6 +1101,30 @@
       $('#rewardCost').value = 50;
       $('#rewardLimit').value = 1;
       $('#rewardUntil').value = nextDate(14);
+      await refreshAndRender();
+    }
+
+    async function markGoalDone(goalId) {
+      await db.from('goals').update({ status: 'waiting' }).eq('id', goalId);
+      activeTab = 'goals';
+      await refreshAndRender();
+    }
+
+    async function approveGoal(goalId) {
+      await db.from('goals').update({ status: 'completed' }).eq('id', goalId);
+      activeTab = 'goals';
+      await refreshAndRender();
+    }
+
+    async function applyConsequence(goalId) {
+      await db.from('goals').update({ status: 'consequence' }).eq('id', goalId);
+      activeTab = 'consequences';
+      await refreshAndRender();
+    }
+
+    async function clearConsequence(goalId) {
+      await db.from('goals').update({ status: 'completed' }).eq('id', goalId);
+      activeTab = 'consequences';
       await refreshAndRender();
     }
 
@@ -1015,10 +1185,12 @@
     $('#childSignInForm').addEventListener('submit', childSignIn);
     $('#childForm').addEventListener('submit', addChild);
     $('#challengeForm').addEventListener('submit', addChallenge);
+    $('#goalForm').addEventListener('submit', addGoal);
     $('#rewardForm').addEventListener('submit', addReward);
     $$('[data-auth-tab]').forEach((button) => button.addEventListener('click', () => setAuthTab(button.dataset.authTab)));
     $$('[data-tab]').forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.tab)));
 
+    $('#goalDueDate').value = nextDate(7);
     $('#rewardUntil').value = nextDate(14);
     refreshAndRender();
   </script>
