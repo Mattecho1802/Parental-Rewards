@@ -673,7 +673,15 @@
               </div>
             </div>
             <label>Consequence
-              <textarea id="goalConsequence" required placeholder="No game time until it is completed"></textarea>
+              <select id="goalConsequenceChoice">
+                <option value="No screens">No screens</option>
+                <option value="Early bedtime">Early bedtime</option>
+                <option value="No dessert or treats">No dessert or treats</option>
+                <option value="__other">Other...</option>
+              </select>
+            </label>
+            <label id="goalConsequenceOtherWrap" class="hidden">Your own consequence
+              <input id="goalConsequence" maxlength="200" placeholder="e.g. No game time until it is done" />
             </label>
             <label>Consequence lasts (days) <span class="meta">(optional)</span>
               <input id="goalConsequenceDays" type="number" min="1" step="1" placeholder="Leave empty for no end date" />
@@ -1582,6 +1590,7 @@
       ['challengeCancel', 'goalCancel', 'rewardCancel', 'consequenceCancel'].forEach((id) => $('#' + id).classList.add('hidden'));
       ['#challengeError', '#goalError', '#rewardError', '#consequenceError'].forEach((id) => setMessage(id, ''));
       updateGoalDueState();
+      updateGoalConsequenceUI();
       ['challengeForm', 'goalForm', 'rewardForm', 'consequenceForm'].forEach(closeForm);
       if (family) { renderChallengeSelect(); renderGoalSelect(); renderConsequenceSelect(); }
     }
@@ -1639,7 +1648,14 @@
       editing = { type: 'goal', id };
       $('#goalName').value = g.name;
       $('#goalDetails').value = g.details || '';
-      $('#goalConsequence').value = g.consequence || '';
+      if (GOAL_CONSEQUENCE_PRESETS.includes(g.consequence)) {
+        $('#goalConsequenceChoice').value = g.consequence;
+        $('#goalConsequence').value = '';
+      } else {
+        $('#goalConsequenceChoice').value = '__other';
+        $('#goalConsequence').value = g.consequence || '';
+      }
+      updateGoalConsequenceUI();
       $('#goalConsequenceDays').value = g.consequence_days || '';
       $('#goalDueDate').value = g.due_date;
       setPicker('goalChildren', [g.child_id]);
@@ -1649,6 +1665,21 @@
       $('#goalSubmit').textContent = 'Save changes';
       $('#goalCancel').classList.remove('hidden');
       openForm('goalForm');
+    }
+
+    const GOAL_CONSEQUENCE_PRESETS = ['No screens', 'Early bedtime', 'No dessert or treats'];
+
+    // Dropdown choice, or the typed text when "Other..." is picked
+    function getGoalConsequence() {
+      return $('#goalConsequenceChoice').value === '__other'
+        ? $('#goalConsequence').value.trim()
+        : $('#goalConsequenceChoice').value;
+    }
+
+    function updateGoalConsequenceUI() {
+      const other = $('#goalConsequenceChoice').value === '__other';
+      $('#goalConsequenceOtherWrap').classList.toggle('hidden', !other);
+      $('#goalConsequence').required = other;
     }
 
     function updateGoalDueState() {
@@ -1894,7 +1925,10 @@
 
       const consequenceCard = (c) => {
         const ended = c.ends_on && c.ends_on < today;
-        const endText = c.ends_on ? (ended ? 'Ended ' + c.ends_on : 'Ends at the end of ' + c.ends_on) : 'No end date';
+        const left = c.ends_on ? dayDiff(today, c.ends_on) + 1 : 0;
+        const endText = c.ends_on
+          ? (ended ? 'Ended ' + prettyDate(c.ends_on) : left + (left === 1 ? ' day left' : ' days left') + ', ends at the end of ' + prettyDate(c.ends_on))
+          : 'No end date';
         return `
           <article class="item">
             <div class="item-header">
@@ -2370,7 +2404,7 @@
       const fields = {
         name: $('#goalName').value.trim(),
         details: $('#goalDetails').value.trim(),
-        consequence: $('#goalConsequence').value.trim(),
+        consequence: getGoalConsequence(),
         consequence_days: $('#goalConsequenceDays').value ? Math.max(1, Math.round(Number($('#goalConsequenceDays').value))) : null,
         recurring_days: days
       };
@@ -2406,6 +2440,7 @@
       event.target.reset();
       $('#goalDueDate').value = nextDate(7);
       updateGoalDueState();
+      updateGoalConsequenceUI();
       closeForm('goalForm');
       await refreshAndRender();
     }
@@ -2478,13 +2513,38 @@
       await refreshAndRender();
     }
 
+    // An active, timed consequence for the same child with the same name: new days get added to it
+    function findTimedConsequence(childId, name) {
+      const key = (name || '').trim().toLowerCase();
+      return (family.consequences || []).find((c) =>
+        c.status === 'active' && c.child_id === childId && c.ends_on && (c.name || '').trim().toLowerCase() === key
+      );
+    }
+
     async function applyConsequence(goalId) {
       const goal = family.goals.find((g) => g.id === goalId);
       if (!goal) return;
       const today = todayStr();
+      const days = goal.consequence_days;
       const alreadyApplied = (family.consequences || []).some((c) => c.goal_id === goalId && c.status === 'active');
+
       if (!alreadyApplied) {
-        const days = goal.consequence_days;
+        const merge = days ? findTimedConsequence(goal.child_id, goal.consequence) : null;
+        if (merge) {
+          // Same consequence is already running: add these days onto it instead of making a second one
+          const update = merge.ends_on >= today
+            ? { ends_on: addDays(merge.ends_on, days) }
+            : { starts_on: today, ends_on: addDays(today, days - 1) };
+          update.details = (merge.details || '') + (merge.details ? ' + ' : 'For goal: ') + goal.name;
+          const res = await db.from('consequences').update(update).eq('id', merge.id);
+          if (!check(res)) return;
+          // This goal's consequence is now part of the running one, so the goal moves on
+          await resetOrComplete(goalId);
+          activeTab = 'consequences';
+          await refreshAndRender();
+          return;
+        }
+
         const ins = await db.from('consequences').insert({
           family_id: family.id,
           child_id: goal.child_id,
@@ -2497,6 +2557,7 @@
         });
         if (!check(ins)) return;
       }
+
       const up = await db.from('goals').update({ status: 'consequence' }).eq('id', goalId);
       if (!check(up)) return;
       activeTab = 'consequences';
@@ -2537,17 +2598,33 @@
       }
 
       const today = todayStr();
-      const { error } = await db.from('consequences').insert(childIds.map((id) => ({
-        family_id: family.id,
-        child_id: id,
-        ...fields,
-        starts_on: today,
-        ends_on: days ? addDays(today, days - 1) : null,
-        status: 'active'
-      })));
-      if (error) {
-        setMessage('#consequenceError', error.message);
-        return;
+      const toInsert = [];
+      for (const id of childIds) {
+        const merge = days ? findTimedConsequence(id, fields.name) : null;
+        if (merge) {
+          // Same consequence already running: add the days onto it
+          const update = merge.ends_on >= today
+            ? { ends_on: addDays(merge.ends_on, days) }
+            : { starts_on: today, ends_on: addDays(today, days - 1) };
+          const res = await db.from('consequences').update(update).eq('id', merge.id);
+          if (!check(res)) return;
+        } else {
+          toInsert.push({
+            family_id: family.id,
+            child_id: id,
+            ...fields,
+            starts_on: today,
+            ends_on: days ? addDays(today, days - 1) : null,
+            status: 'active'
+          });
+        }
+      }
+      if (toInsert.length) {
+        const { error } = await db.from('consequences').insert(toInsert);
+        if (error) {
+          setMessage('#consequenceError', error.message);
+          return;
+        }
       }
       event.target.reset();
       closeForm('consequenceForm');
@@ -2666,6 +2743,8 @@
     $$('[data-auth-tab]').forEach((button) => button.addEventListener('click', () => setAuthTab(button.dataset.authTab)));
     $$('[data-onboard-tab]').forEach((button) => button.addEventListener('click', () => setOnboardTab(button.dataset.onboardTab)));
     $('#goalDays').addEventListener('change', updateGoalDueState);
+    $('#goalConsequenceChoice').addEventListener('change', updateGoalConsequenceUI);
+    updateGoalConsequenceUI();
     ['challengeChildren', 'goalChildren', 'consequenceChildren'].forEach((id) => {
       $('#' + id).addEventListener('change', (e) => {
         const kids = $$('#' + id + ' input[data-child]');
