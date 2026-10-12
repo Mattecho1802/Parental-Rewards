@@ -591,7 +591,7 @@
         <div class="meta" id="profileDetail"></div>
       </section>
 
-      <div class="parent-only" style="display:grid;gap:8px">
+      <div style="display:grid;gap:8px">
         <button class="btn secondary" type="button" id="pushBtn">Turn on notifications</button>
         <button class="btn secondary hidden" type="button" id="pushTestBtn">Send test notification</button>
         <p class="meta" id="pushStatus" style="color:#bac4d4"></p>
@@ -946,7 +946,7 @@
     }
 
     async function updatePushUI() {
-      if (!session || session.role !== 'parent') return;
+      if (!session) return;
       const btn = $('#pushBtn');
       const status = $('#pushStatus');
       const testBtn = $('#pushTestBtn');
@@ -975,12 +975,14 @@
       const sub = await currentPushSubscription();
       pushIsOn = !!sub;
       btn.textContent = sub ? 'Turn off notifications' : 'Turn on notifications';
-      testBtn.classList.toggle('hidden', !sub);
+      testBtn.classList.toggle('hidden', !sub || session.role !== 'parent');
       status.textContent = sub
         ? 'Notifications are on for this device. Your browser already allowed them, so it will not ask again.'
         : Notification.permission === 'granted'
           ? 'Allowed in your browser. Press the button to finish setting up this device.'
-          : 'Get a notification when a child finishes something.';
+          : session.role === 'parent'
+          ? 'Get a notification when a child finishes something.'
+          : 'Get a notification when your parent sends something back.';
     }
 
     async function sendTestPush() {
@@ -1024,7 +1026,7 @@
           if (existing) {
             const endpoint = existing.endpoint;
             await existing.unsubscribe();
-            await db.rpc('remove_push_subscription', { p_endpoint: endpoint });
+            await removePushOnServer(endpoint);
           }
           await updatePushUI();
           return;
@@ -1056,12 +1058,7 @@
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
         });
-        const json = sub.toJSON();
-        const res = await db.rpc('save_push_subscription', {
-          p_endpoint: json.endpoint,
-          p_p256dh: json.keys.p256dh,
-          p_auth: json.keys.auth
-        });
+        const res = await savePushToServer(sub);
         if (res.error) throw new Error(res.error.message);
         await updatePushUI();
       } catch (e) {
@@ -1073,19 +1070,33 @@
     }
 
     // Keep this device's subscription attached to whoever is signed in
+    function savePushToServer(sub) {
+      const json = sub.toJSON();
+      const args = { p_endpoint: json.endpoint, p_p256dh: json.keys.p256dh, p_auth: json.keys.auth };
+      return session.role === 'child'
+        ? db.rpc('child_save_push_subscription', { p_token: session.token, ...args })
+        : db.rpc('save_push_subscription', args);
+    }
+
+    function removePushOnServer(endpoint) {
+      return session.role === 'child'
+        ? db.rpc('child_remove_push_subscription', { p_token: session.token, p_endpoint: endpoint })
+        : db.rpc('remove_push_subscription', { p_endpoint: endpoint });
+    }
+
     async function syncPushSubscription() {
       try {
         const sub = await currentPushSubscription();
         if (!sub) return;
         const json = sub.toJSON();
-        await db.rpc('save_push_subscription', { p_endpoint: json.endpoint, p_p256dh: json.keys.p256dh, p_auth: json.keys.auth });
+        await savePushToServer(sub);
       } catch (e) { /* not important */ }
     }
 
     async function removePushFromServer() {
       try {
         const sub = await currentPushSubscription();
-        if (sub) await db.rpc('remove_push_subscription', { p_endpoint: sub.endpoint });
+        if (sub) await removePushOnServer(sub.endpoint);
       } catch (e) { /* not important */ }
     }
 
@@ -1330,6 +1341,7 @@
       session = { role: 'child', token, familyId: family.id, childId: family.children[0].id };
       activeTab = 'challenges';
       render();
+      syncPushSubscription();
     }
 
     async function startFromAuth(authSession) {
@@ -1356,12 +1368,12 @@
     }
 
     async function signOut() {
+      if (session?.role === 'parent' || session?.role === 'child') await removePushFromServer();
       const token = getChildToken();
       if (token) {
         db.rpc('child_logout', { p_token: token });
         localStorage.removeItem(childKey);
       }
-      if (session?.role === 'parent') await removePushFromServer();
       if (session?.role === 'parent' || needsOnboarding) {
         await db.auth.signOut({ scope: 'local' });
       }
