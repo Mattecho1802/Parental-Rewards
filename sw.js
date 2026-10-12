@@ -21,6 +21,7 @@ self.addEventListener('push', (event) => {
       icon: 'apple-touch-icon.png',
       badge: 'favicon.png',
       tag: data.tag || undefined,
+      renotify: !!data.tag,
       data: { url: data.url || './' }
     })
   );
