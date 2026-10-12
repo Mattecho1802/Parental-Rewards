@@ -434,6 +434,9 @@
     .history > summary, .settings > summary { cursor: pointer; font-weight: 800; padding: 12px 0; font-size: 18px; }
     .history[open], .settings[open] { padding-bottom: 16px; }
 
+    .btn.icon { min-width: 38px; padding: 5px 12px; font-size: 16px; font-weight: 900; line-height: 1; }
+    .btn.ghost-danger { background: #fff; color: var(--red); border: 1px solid #f0c4c4; }
+    .btn.ghost-danger:hover { background: #fdf0f0; }
     .row-item.can-deny { flex-wrap: wrap; }
     .deny-box { flex-basis: 100%; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
     .deny-box input { flex: 1; min-width: 180px; }
@@ -977,7 +980,20 @@
       status.textContent = 'Sending a test...';
       const { data, error } = await db.functions.invoke('send-push', { body: { test: true } });
       if (error) {
-        status.textContent = 'The test failed: ' + (error.message || 'could not reach the send-push function. Is it deployed?');
+        const code = error.context && error.context.status;
+        if (error.name === 'FunctionsFetchError') {
+          status.textContent = 'Could not reach the send-push function. In Supabase, check it is deployed with exactly that name and the latest code, then look at its Logs tab.';
+        } else if (code === 404) {
+          status.textContent = 'The send-push function was not found. Deploy it with exactly that name.';
+        } else if (code === 401) {
+          status.textContent = 'Not allowed (401). Sign out and back in, then try again.';
+        } else {
+          status.textContent = 'The test failed' + (code ? ' (error ' + code + ')' : '') + ': ' + (error.message || 'unknown error');
+        }
+        return;
+      }
+      if (data && data.error) {
+        status.textContent = 'The server reported a problem: ' + (data.detail || data.error);
         return;
       }
       if (!data || !data.devices) {
@@ -1676,12 +1692,12 @@
         const actions = isParent
           ? (doneToday(challenge)
               ? '<span class="pill green">Done today</span>'
-              : `<button class="btn success small" type="button" onclick="approveChallenge('${challenge.id}')">Approve</button>`)
+              : approveIconBtn(`approveChallenge('${challenge.id}')`))
             + `<button class="btn secondary small" type="button" onclick="startEditChallenge('${challenge.id}')">Edit</button>`
             + `<button class="btn danger small" type="button" onclick="deleteChallenge('${challenge.id}')">Delete</button>`
           : (waitingRequest
               ? '<span class="pill amber">Sent</span>'
-              : `<button class="btn ghost small" type="button" onclick="sendCompletionRequest('${challenge.id}')">I finished this</button>`);
+              : `<button class="btn ghost small" type="button" onclick="sendCompletionRequest('${challenge.id}')">✓ I finished this</button>`);
 
         return `
           <article class="row-item">
@@ -1750,13 +1766,14 @@
 
         const overdue = goal.status !== 'consequence' && goal.status !== 'waiting' && goal.due_date < todayStr();
         let actions = '';
+        let boxes = '';
         if (isParent) {
-          if (goal.status === 'waiting') actions += `<button class="btn success small" type="button" onclick="approveGoal('${goal.id}')">Approve goal</button>`;
+          if (goal.status === 'waiting') { const d = goalDecision(goal, 'g'); actions += d.buttons; boxes += d.boxes; }
           if (overdue) actions += `<button class="btn danger small" type="button" onclick="applyConsequence('${goal.id}')">Apply consequence</button>`;
           actions += `<button class="btn secondary small" type="button" onclick="startEditGoal('${goal.id}')">Edit</button>`;
           actions += `<button class="btn secondary small" type="button" onclick="deleteGoal('${goal.id}')">Delete</button>`;
         } else if (goal.status === 'active' && !upcoming) {
-          actions = `<button class="btn warning" type="button" onclick="markGoalDone('${goal.id}')">I completed this goal</button>`;
+          actions = `<button class="btn warning" type="button" onclick="markGoalDone('${goal.id}')">✓ I completed this goal</button>`;
         }
 
         const metaBits = [
@@ -1779,6 +1796,7 @@
             ${goal.denied_at && goal.status === 'active' ? `<div class="denied-note">Sent back by your parent${goal.deny_reason ? ': ' + esc(goal.deny_reason) : '.'}</div>` : ''}
             <div class="goal-consequence">If missed: ${esc(goal.consequence)}${goal.consequence_days ? ' (for ' + goal.consequence_days + (goal.consequence_days === 1 ? ' day' : ' days') + ')' : ''}</div>
             ${actions ? `<div class="row">${actions}</div>` : ''}
+            ${boxes}
           </article>
         `;
       };
@@ -1918,6 +1936,14 @@
       list.innerHTML = active.map(consequenceCard).join('') + goalItems.map(goalCard).join('');
     }
 
+    function approveIconBtn(handler) {
+      return `<button class="btn success small icon" type="button" title="Approve" aria-label="Approve" onclick="${handler}">✓</button>`;
+    }
+
+    function denyIconBtn(handler) {
+      return `<button class="btn ghost-danger small icon" type="button" title="Deny" aria-label="Deny" onclick="${handler}">✕</button>`;
+    }
+
     function requestCard(request) {
       const challenge = family.challenges.find((c) => c.id === request.challenge_id);
       const key = 'req-' + request.id;
@@ -1928,8 +1954,8 @@
             <div class="row-meta">Challenge${challenge ? ' · ' + challenge.points + ' points' : ''}</div>
           </div>
           <div class="row-actions">
-            <button class="btn success small" type="button" onclick="approveChallenge('${request.challenge_id}')">Approve</button>
-            <button class="btn danger small" type="button" onclick="toggleDeny('${key}')">Deny</button>
+            ${approveIconBtn(`approveChallenge('${request.challenge_id}')`)}
+            ${denyIconBtn(`toggleDeny('${key}')`)}
           </div>
           <div class="deny-box hidden" id="deny-${key}">
             <input id="deny-reason-${key}" maxlength="200" placeholder="Reason (optional)" onkeydown="if (event.key === 'Enter') denyRequest('${request.id}')" />
@@ -1940,23 +1966,65 @@
       `;
     }
 
+    // Tick / cross / tip controls for a goal waiting for a decision.
+    // "scope" keeps element ids unique when the same goal appears in two places.
+    function goalDecision(goal, scope) {
+      const id = goal.id;
+      const key = scope + '-' + id;
+      const buttons =
+        approveIconBtn(`approveGoal('${id}')`)
+        + denyIconBtn(`toggleGoalBox('deny', '${key}')`)
+        + `<button class="btn ghost small" type="button" title="Give bonus points for doing it really well" onclick="toggleGoalBox('tip', '${key}')">Tip</button>`;
+      const boxes = `
+        <div class="deny-box hidden" id="deny-goal-${key}">
+          <input id="deny-reason-goal-${key}" maxlength="200" placeholder="Reason (optional)" onkeydown="if (event.key === 'Enter') denyGoal('${id}', '${key}')" />
+          <button class="btn danger small" type="button" onclick="denyGoal('${id}', '${key}')">Confirm deny</button>
+          <button class="btn secondary small" type="button" onclick="toggleGoalBox('deny', '${key}')">Cancel</button>
+        </div>
+        <div class="deny-box hidden" id="tip-goal-${key}">
+          <span class="meta">Bonus for doing it really well:</span>
+          <button class="btn ghost small" type="button" onclick="setTip('${key}', 5)">+5</button>
+          <button class="btn ghost small" type="button" onclick="setTip('${key}', 10)">+10</button>
+          <button class="btn ghost small" type="button" onclick="setTip('${key}', 20)">+20</button>
+          <input id="tip-amount-${key}" type="number" min="1" max="1000" step="1" placeholder="points" style="flex:0 0 90px;min-width:90px" onkeydown="if (event.key === 'Enter') approveGoalWithTip('${id}', '${key}')" />
+          <button class="btn success small" type="button" onclick="approveGoalWithTip('${id}', '${key}')">✓ Approve + tip</button>
+          <button class="btn secondary small" type="button" onclick="toggleGoalBox('tip', '${key}')">Cancel</button>
+        </div>
+      `;
+      return { buttons, boxes };
+    }
+
+    function toggleGoalBox(kind, key) {
+      const target = document.getElementById(kind + '-goal-' + key);
+      if (!target) return;
+      ['deny', 'tip'].forEach((k) => {
+        if (k !== kind) {
+          const other = document.getElementById(k + '-goal-' + key);
+          if (other) other.classList.add('hidden');
+        }
+      });
+      target.classList.toggle('hidden');
+      if (!target.classList.contains('hidden')) {
+        const input = target.querySelector('input');
+        if (input) input.focus();
+      }
+    }
+
+    function setTip(key, amount) {
+      const input = document.getElementById('tip-amount-' + key);
+      if (input) { input.value = amount; input.focus(); }
+    }
+
     function goalRequestCard(goal) {
-      const key = 'goal-' + goal.id;
+      const d = goalDecision(goal, 'a');
       return `
         <article class="row-item can-deny">
           <div class="row-main">
             <div class="row-title">${esc(childName(goal.child_id))} completed: ${esc(goal.name)}</div>
             <div class="row-meta">Goal · due ${prettyDate(goal.due_date)}</div>
           </div>
-          <div class="row-actions">
-            <button class="btn success small" type="button" onclick="approveGoal('${goal.id}')">Approve</button>
-            <button class="btn danger small" type="button" onclick="toggleDeny('${key}')">Deny</button>
-          </div>
-          <div class="deny-box hidden" id="deny-${key}">
-            <input id="deny-reason-${key}" maxlength="200" placeholder="Reason (optional)" onkeydown="if (event.key === 'Enter') denyGoal('${goal.id}')" />
-            <button class="btn danger small" type="button" onclick="denyGoal('${goal.id}')">Confirm deny</button>
-            <button class="btn secondary small" type="button" onclick="toggleDeny('${key}')">Cancel</button>
-          </div>
+          <div class="row-actions">${d.buttons}</div>
+          ${d.boxes}
         </article>
       `;
     }
@@ -1976,15 +2044,30 @@
       await refreshAndRender();
     }
 
-    async function denyGoal(goalId) {
+    async function denyGoal(goalId, key) {
       if (session.role !== 'parent') return;
-      const reason = document.getElementById('deny-reason-goal-' + goalId).value.trim();
+      const reason = document.getElementById('deny-reason-goal-' + key).value.trim();
       const res = await db.from('goals').update({
         status: 'active',
         deny_reason: reason || null,
         denied_at: new Date().toISOString()
       }).eq('id', goalId);
       if (!check(res)) return;
+      await refreshAndRender();
+    }
+
+    async function approveGoalWithTip(goalId, key) {
+      if (session.role !== 'parent') return;
+      const goal = family.goals.find((g) => g.id === goalId);
+      if (!goal) return;
+      const amount = Math.round(Number(document.getElementById('tip-amount-' + key).value));
+      if (!amount || amount < 1) {
+        alert('Enter how many bonus points to give.');
+        return;
+      }
+      const tip = await db.rpc('tip_child', { p_child_id: goal.child_id, p_amount: amount, p_reason: 'Tip: ' + goal.name });
+      if (!check(tip)) return;
+      await resetOrComplete(goalId);
       await refreshAndRender();
     }
 
