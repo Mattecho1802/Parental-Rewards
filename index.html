@@ -453,6 +453,32 @@
       .row-actions { width: 100%; justify-content: flex-start; }
     }
 
+    .mobile-nav { display: none; }
+
+    @media (max-width: 900px) {
+      .mobile-nav {
+        display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; gap: 6px;
+        background: #fff; border-top: 1px solid var(--line);
+        padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
+      }
+      .mobile-nav button {
+        flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+        background: transparent; color: var(--muted); font-size: 12px; font-weight: 800;
+        padding: 6px; border-radius: 8px;
+      }
+      .mobile-nav button.active { color: var(--blue); background: #eef4ff; }
+      .mobile-nav svg { width: 22px; height: 22px; }
+
+      /* Phones: Home shows the dashboard; Settings shows profile, children and family settings */
+      .app-shell .sidebar { display: none; }
+      .app-shell.show-settings .sidebar { display: flex; }
+      .app-shell .sidebar-note { display: none; }
+      .app-shell.show-settings main > .home-only { display: none !important; }
+      .app-shell.show-home main > .settings-only { display: none !important; }
+      main { padding-bottom: 92px; }
+      .toast { bottom: 88px; }
+    }
+
     @media (max-width: 900px) {
       .auth-card, .app-shell { grid-template-columns: 1fr; }
       .sidebar { min-height: auto; }
@@ -584,7 +610,7 @@
     </div>
   </section>
 
-  <div id="appScreen" class="app-shell hidden">
+  <div id="appScreen" class="app-shell show-home hidden">
     <aside class="sidebar">
       <div class="brand-row">
         <div class="brand-mark">PR</div>
@@ -599,7 +625,6 @@
 
       <div style="display:grid;gap:8px">
         <button class="btn secondary" type="button" id="pushBtn">Turn on notifications</button>
-        <button class="btn secondary hidden" type="button" id="pushTestBtn">Send test notification</button>
         <p class="meta" id="pushStatus" style="color:#bac4d4"></p>
       </div>
 
@@ -608,7 +633,7 @@
     </aside>
 
     <main>
-      <header class="topbar">
+      <header class="topbar home-only">
         <div>
           <h1 id="pageTitle">Family Dashboard</h1>
           <p class="subtitle" id="pageSubtitle"></p>
@@ -619,14 +644,14 @@
         </div>
       </header>
 
-      <section id="attentionSection" class="block attention parent-only">
+      <section id="attentionSection" class="block attention parent-only home-only">
         <div class="block-head">
           <h2>Needs your attention <span class="count hidden" id="attentionCount"></span></h2>
         </div>
         <div id="requestList" class="list"></div>
       </section>
 
-      <section id="childrenSection" class="block parent-only">
+      <section id="childrenSection" class="block parent-only settings-only">
         <div class="block-head">
           <h2>Children</h2>
         </div>
@@ -646,7 +671,7 @@
         <div id="childrenList" class="kid-grid"></div>
       </section>
 
-      <section id="summarySection" class="block parent-only">
+      <section id="summarySection" class="block parent-only home-only">
         <div class="block-head">
           <div>
             <h2>Weekly summary</h2>
@@ -660,7 +685,7 @@
         <div id="summaryList" class="kid-grid"></div>
       </section>
 
-      <section id="goalsSection" class="block">
+      <section id="goalsSection" class="block home-only">
         <div class="block-head">
           <div>
             <h2>Goals</h2>
@@ -718,7 +743,7 @@
         <div id="goalList" class="list"></div>
       </section>
 
-      <section id="consequenceSection" class="block">
+      <section id="consequenceSection" class="block home-only">
         <div class="block-head">
           <h2>Consequences</h2>
         </div>
@@ -731,7 +756,15 @@
               <div class="day-picker" id="consequenceChildren"></div>
             </div>
             <label>Consequence
-              <input id="consequenceName" required placeholder="No tablet" />
+              <select id="consequenceChoice">
+                <option value="No screens">No screens</option>
+                <option value="Early bedtime">Early bedtime</option>
+                <option value="No dessert or treats">No dessert or treats</option>
+                <option value="__other">Other...</option>
+              </select>
+            </label>
+            <label id="consequenceOtherWrap" class="hidden">Your own consequence
+              <input id="consequenceName" maxlength="200" placeholder="e.g. No tablet" />
             </label>
             <label>Lasts (days) <span class="meta">(optional)</span>
               <input id="consequenceDays" type="number" min="1" step="1" placeholder="Leave empty for no end date" />
@@ -748,7 +781,7 @@
         <div id="consequenceList" class="list"></div>
       </section>
 
-      <section id="challengesSection" class="block challenges-block">
+      <section id="challengesSection" class="block challenges-block home-only">
         <div class="block-head">
           <div>
             <h2>Optional challenges</h2>
@@ -792,7 +825,7 @@
         <div id="challengeList" class="list"></div>
       </section>
 
-      <section id="rewardsSection" class="block">
+      <section id="rewardsSection" class="block home-only">
         <div class="block-head">
           <div>
             <h2>Reward shop</h2>
@@ -827,7 +860,7 @@
         <div id="rewardList" class="reward-grid"></div>
       </section>
 
-      <details id="historySection" class="history">
+      <details id="historySection" class="history home-only">
         <summary>Points history <span class="meta" id="historyCount"></span></summary>
         <div id="approvalSection" class="parent-only">
           <h3 style="margin:8px 0">Recent approvals</h3>
@@ -837,7 +870,7 @@
         <div id="historyList" class="list" style="margin-top:8px"></div>
       </details>
 
-      <details id="settingsSection" class="settings parent-only">
+      <details id="settingsSection" class="settings parent-only settings-only">
         <summary>Family settings</summary>
         <div class="grid" style="margin-top:12px">
           <div class="panel span-5 parent-only">
@@ -870,6 +903,17 @@
         </div>
       </details>
     </main>
+
+    <nav class="mobile-nav" aria-label="Main">
+      <button type="button" data-mview="home" class="active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+        <span>Home</span>
+      </button>
+      <button type="button" data-mview="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h8M18 6h2M4 12h2M12 12h8M4 18h10M20 18h0"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+        <span id="mobileSettingsLabel">Settings</span>
+      </button>
+    </nav>
   </div>
 
   <div id="toast" class="toast hidden" role="status">
@@ -906,6 +950,18 @@
     }
 
     let editing = null; // { type: 'challenge' | 'goal', id }
+    let mobileView = 'home';
+
+    // Phones only: switch between the dashboard and the settings/profile page
+    function setMobileView(view) {
+      mobileView = view;
+      const shell = $('#appScreen');
+      shell.classList.toggle('show-home', view === 'home');
+      shell.classList.toggle('show-settings', view === 'settings');
+      $$('[data-mview]').forEach((button) => button.classList.toggle('active', button.dataset.mview === view));
+      if (view === 'settings') $('#settingsSection').open = true;
+      window.scrollTo(0, 0);
+    }
 
     function nextDate(days) {
       const date = new Date();
@@ -979,9 +1035,7 @@
       if (!session) return;
       const btn = $('#pushBtn');
       const status = $('#pushStatus');
-      const testBtn = $('#pushTestBtn');
       if (!btn || !status) return;
-      testBtn.classList.add('hidden');
 
       if (!pushSupported()) {
         btn.classList.add('hidden');
@@ -1005,7 +1059,6 @@
       const sub = await currentPushSubscription();
       pushIsOn = !!sub;
       btn.textContent = sub ? 'Turn off notifications' : 'Turn on notifications';
-      testBtn.classList.toggle('hidden', !sub || session.role !== 'parent');
       status.textContent = sub
         ? 'Notifications are on for this device. Your browser already allowed them, so it will not ask again.'
         : Notification.permission === 'granted'
@@ -1013,36 +1066,6 @@
           : session.role === 'parent'
           ? 'Get a notification when a child finishes something.'
           : 'Get a notification when your parent sends something back.';
-    }
-
-    async function sendTestPush() {
-      const status = $('#pushStatus');
-      status.textContent = 'Sending a test...';
-      const { data, error } = await db.functions.invoke('send-push', { body: { test: true } });
-      if (error) {
-        const code = error.context && error.context.status;
-        if (error.name === 'FunctionsFetchError') {
-          status.textContent = 'Could not reach the send-push function. In Supabase, check it is deployed with exactly that name and the latest code, then look at its Logs tab.';
-        } else if (code === 404) {
-          status.textContent = 'The send-push function was not found. Deploy it with exactly that name.';
-        } else if (code === 401) {
-          status.textContent = 'Not allowed (401). Sign out and back in, then try again.';
-        } else {
-          status.textContent = 'The test failed' + (code ? ' (error ' + code + ')' : '') + ': ' + (error.message || 'unknown error');
-        }
-        return;
-      }
-      if (data && data.error) {
-        status.textContent = 'The server reported a problem: ' + (data.detail || data.error);
-        return;
-      }
-      if (!data || !data.devices) {
-        status.textContent = 'This device is not registered on the server yet. Turn notifications off, then on again (and check update-push.sql has been run).';
-        return;
-      }
-      status.textContent = data.sent
-        ? 'Test sent to ' + data.sent + (data.sent === 1 ? ' device' : ' devices') + '. It should appear in a few seconds.'
-        : 'The server could not deliver to this device. Check the send-push secrets (the public and private keys must be the same pair).';
     }
 
     async function togglePush() {
@@ -1364,6 +1387,7 @@
       activeTab = 'family';
       editing = null;
       document.title = 'Parental Rewards';
+      setMobileView('home');
     }
 
     async function enterParent(user) {
@@ -1490,6 +1514,7 @@
         ? 'Approve what is waiting, set goals and challenges, and manage rewards and consequences.'
         : 'Keep an eye on your goals, try the optional challenges, and save up for rewards.';
       $('#scoreLabel').textContent = isParent ? 'Family points' : 'My points';
+      $('#mobileSettingsLabel').textContent = isParent ? 'Settings' : 'Profile';
       $('#scoreValue').textContent = isParent
         ? family.children.reduce((sum, kid) => sum + kid.points, 0)
         : child.points;
@@ -1672,6 +1697,7 @@
       ['#challengeError', '#goalError', '#rewardError', '#consequenceError'].forEach((id) => setMessage(id, ''));
       updateGoalDueState();
       updateGoalConsequenceUI();
+      updateConsequenceUI();
       ['challengeForm', 'goalForm', 'rewardForm', 'consequenceForm'].forEach(closeForm);
       if (family) { renderChallengeSelect(); renderGoalSelect(); renderConsequenceSelect(); }
     }
@@ -1696,7 +1722,14 @@
       if (!c) return;
       cancelEdit();
       editing = { type: 'consequence', id };
-      $('#consequenceName').value = c.name;
+      if (GOAL_CONSEQUENCE_PRESETS.includes(c.name)) {
+        $('#consequenceChoice').value = c.name;
+        $('#consequenceName').value = '';
+      } else {
+        $('#consequenceChoice').value = '__other';
+        $('#consequenceName').value = c.name;
+      }
+      updateConsequenceUI();
       $('#consequenceDetails').value = c.details || '';
       $('#consequenceDays').value = c.ends_on ? dayDiff(c.starts_on, c.ends_on) + 1 : '';
       setPicker('consequenceChildren', [c.child_id]);
@@ -1761,6 +1794,19 @@
       const other = $('#goalConsequenceChoice').value === '__other';
       $('#goalConsequenceOtherWrap').classList.toggle('hidden', !other);
       $('#goalConsequence').required = other;
+    }
+
+    // Same dropdown as goals: three presets, or "Other..." to type your own
+    function getConsequenceName() {
+      return $('#consequenceChoice').value === '__other'
+        ? $('#consequenceName').value.trim()
+        : $('#consequenceChoice').value;
+    }
+
+    function updateConsequenceUI() {
+      const other = $('#consequenceChoice').value === '__other';
+      $('#consequenceOtherWrap').classList.toggle('hidden', !other);
+      $('#consequenceName').required = other;
     }
 
     function updateGoalDueState() {
@@ -2680,7 +2726,7 @@
       const daysRaw = $('#consequenceDays').value;
       const days = daysRaw ? Math.max(1, Math.round(Number(daysRaw))) : null;
       const fields = {
-        name: $('#consequenceName').value.trim(),
+        name: getConsequenceName(),
         details: $('#consequenceDetails').value.trim()
       };
 
@@ -2732,6 +2778,7 @@
         }
       }
       event.target.reset();
+      updateConsequenceUI();
       closeForm('consequenceForm');
       await refreshAndRender();
     }
@@ -2953,7 +3000,6 @@
     $('#consequenceCancel').addEventListener('click', cancelEdit);
     $('#saveFamilyNameBtn').addEventListener('click', renameFamily);
     $('#pushBtn').addEventListener('click', togglePush);
-    $('#pushTestBtn').addEventListener('click', sendTestPush);
     registerServiceWorker();
     $('#challengeCancel').addEventListener('click', cancelEdit);
     $('#goalCancel').addEventListener('click', cancelEdit);
@@ -2961,6 +3007,8 @@
     $$('[data-onboard-tab]').forEach((button) => button.addEventListener('click', () => setOnboardTab(button.dataset.onboardTab)));
     $('#goalDays').addEventListener('change', updateGoalDueState);
     $('#goalConsequenceChoice').addEventListener('change', updateGoalConsequenceUI);
+    $('#consequenceChoice').addEventListener('change', updateConsequenceUI);
+    updateConsequenceUI();
     updateGoalConsequenceUI();
     ['challengeChildren', 'goalChildren', 'consequenceChildren'].forEach((id) => {
       $('#' + id).addEventListener('change', (e) => {
@@ -2980,6 +3028,7 @@
     $('#summaryThis').addEventListener('click', () => { summaryWeek = 'this'; renderSummary(); });
     $('#summaryLast').addEventListener('click', () => { summaryWeek = 'last'; renderSummary(); });
     $('#toastUndo').addEventListener('click', () => undoApproval(toastApprovalId, false));
+    $$('[data-mview]').forEach((button) => button.addEventListener('click', () => setMobileView(button.dataset.mview)));
 
     setInterval(autoRefresh, 5000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { lastAutoRefresh = 0; autoRefresh(); } });
