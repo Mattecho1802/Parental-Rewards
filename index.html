@@ -437,6 +437,12 @@
     .btn.icon { min-width: 38px; padding: 5px 12px; font-size: 16px; font-weight: 900; line-height: 1; }
     .btn.ghost-danger { background: #fff; color: var(--red); border: 1px solid #f0c4c4; }
     .btn.ghost-danger:hover { background: #fdf0f0; }
+    .btn.ghost.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat { background: var(--page); border-radius: 8px; padding: 8px 10px; }
+    .stat strong { display: block; font-size: 20px; }
+    .stat span { color: var(--muted); font-size: 12px; font-weight: 700; }
+    .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 50; display: flex; align-items: center; gap: 12px; background: #101828; color: #fff; padding: 10px 14px; border-radius: 10px; box-shadow: 0 14px 32px rgba(16, 24, 40, 0.3); max-width: calc(100% - 32px); }
     .row-item.can-deny { flex-wrap: wrap; }
     .deny-box { flex-basis: 100%; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
     .deny-box input { flex: 1; min-width: 180px; }
@@ -640,6 +646,20 @@
         <div id="childrenList" class="kid-grid"></div>
       </section>
 
+      <section id="summarySection" class="block parent-only">
+        <div class="block-head">
+          <div>
+            <h2>Weekly summary</h2>
+            <p class="block-sub" id="summaryRange"></p>
+          </div>
+          <div class="row">
+            <button class="btn ghost small active" type="button" id="summaryThis">This week</button>
+            <button class="btn ghost small" type="button" id="summaryLast">Last week</button>
+          </div>
+        </div>
+        <div id="summaryList" class="kid-grid"></div>
+      </section>
+
       <section id="goalsSection" class="block">
         <div class="block-head">
           <div>
@@ -809,6 +829,11 @@
 
       <details id="historySection" class="history">
         <summary>Points history <span class="meta" id="historyCount"></span></summary>
+        <div id="approvalSection" class="parent-only">
+          <h3 style="margin:8px 0">Recent approvals</h3>
+          <div id="approvalList" class="list"></div>
+          <h3 style="margin:16px 0 8px">Points history</h3>
+        </div>
         <div id="historyList" class="list" style="margin-top:8px"></div>
       </details>
 
@@ -845,6 +870,11 @@
         </div>
       </details>
     </main>
+  </div>
+
+  <div id="toast" class="toast hidden" role="status">
+    <span id="toastText"></span>
+    <button class="btn small" type="button" id="toastUndo">Undo</button>
   </div>
 
   <script src="config.js"></script>
@@ -1207,15 +1237,16 @@
       if (error) { loading = false; return 'error'; }
       if (!familyRow) { loading = false; return 'expired'; }
 
-      const [childrenRes, challengesRes, goalsRes, rewardsRes, requestsRes, membersRes, logRes, consRes] = await Promise.all([
+      const [childrenRes, challengesRes, goalsRes, rewardsRes, requestsRes, membersRes, logRes, consRes, approvalsRes] = await Promise.all([
         db.from('children').select('id, family_id, name, points, created_at').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('challenges').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('goals').select('*').eq('family_id', familyId).order('due_date', { ascending: true }),
         db.from('rewards').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('completion_requests').select('*').eq('family_id', familyId).order('created_at', { ascending: false }),
         db.from('family_members').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
-        db.from('points_log').select('*').eq('family_id', familyId).order('created_at', { ascending: false }).limit(200),
-        db.from('consequences').select('*').eq('family_id', familyId).order('created_at', { ascending: false })
+        db.from('points_log').select('*').eq('family_id', familyId).order('created_at', { ascending: false }).limit(500),
+        db.from('consequences').select('*').eq('family_id', familyId).order('created_at', { ascending: false }),
+        db.from('approvals').select('*').eq('family_id', familyId).order('created_at', { ascending: false }).limit(200)
       ]);
 
       const members = membersRes.data || [];
@@ -1229,7 +1260,8 @@
         parents: members,
         parent_emails: members.map((m) => m.email).filter(Boolean),
         log: logRes.data || [],
-        consequences: consRes.data || []
+        consequences: consRes.data || [],
+        approvals: approvalsRes.data || []
       };
       const changed = !family || JSON.stringify(next) !== JSON.stringify(family);
       family = next;
@@ -1275,13 +1307,46 @@
 
     // Quietly re-check the database and only redraw if something changed
     // Quietly re-check the database and only redraw if something changed
+    let lastAutoRefresh = 0;
+    let realtimeChannel = null;
+    let realtimeTimer = null;
+
     async function autoRefresh() {
       if (!session || loading || document.hidden) return;
+      // Children check every 5 seconds; parents every 15 (they also get instant live updates)
+      const every = session.role === 'child' ? 5000 : 15000;
+      if (Date.now() - lastAutoRefresh < every - 500) return;
       const el = document.activeElement;
       if (el && (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || (el.tagName === 'INPUT' && el.type !== 'checkbox'))) return;
+      lastAutoRefresh = Date.now();
       const result = await loadData(true);
       if (result === 'changed') render();
       else if (result === 'expired') signOut();
+    }
+
+    // Live updates for signed-in parents: the database tells us the moment anything changes
+    function startRealtime() {
+      if (realtimeChannel || !session || session.role !== 'parent') return;
+      const familyId = session.familyId;
+      let channel = db.channel('family-' + familyId);
+      ['children', 'challenges', 'goals', 'rewards', 'completion_requests', 'consequences', 'points_log', 'family_members', 'approvals'].forEach((table) => {
+        channel = channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: 'family_id=eq.' + familyId }, () => {
+          clearTimeout(realtimeTimer);
+          realtimeTimer = setTimeout(() => { lastAutoRefresh = 0; autoRefresh(); }, 300);
+        });
+      });
+      channel.subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') console.warn('Live updates unavailable, falling back to checking every 15 seconds:', status);
+      });
+      realtimeChannel = channel;
+    }
+
+    function stopRealtime() {
+      clearTimeout(realtimeTimer);
+      if (realtimeChannel) {
+        db.removeChannel(realtimeChannel);
+        realtimeChannel = null;
+      }
     }
 
     async function refreshAndRender() {
@@ -1291,6 +1356,7 @@
     }
 
     function resetState() {
+      stopRealtime();
       session = null;
       family = null;
       loading = false;
@@ -1324,6 +1390,7 @@
       if (window.location.search) history.replaceState(null, '', window.location.pathname);
       await refreshAndRender();
       syncPushSubscription();
+      startRealtime();
     }
 
     async function enterChild() {
@@ -1431,7 +1498,7 @@
 
       // One page, no tabs: show the sections in order of importance for who is signed in
       const order = isParent
-        ? { attentionSection: 0, childrenSection: 1, goalsSection: 2, consequenceSection: 3, challengesSection: 4, rewardsSection: 5, historySection: 6, settingsSection: 7 }
+        ? { attentionSection: 0, childrenSection: 1, goalsSection: 2, consequenceSection: 3, challengesSection: 4, rewardsSection: 5, summarySection: 6, historySection: 7, settingsSection: 8 }
         : { consequenceSection: 0, goalsSection: 1, challengesSection: 2, rewardsSection: 3, historySection: 4 };
       Object.entries(order).forEach(([id, position]) => { $('#' + id).style.order = position; });
 
@@ -1446,6 +1513,8 @@
       renderConsequences();
       renderRequests();
       renderHistory();
+      renderApprovals();
+      renderSummary();
       updatePushUI();
     }
 
@@ -2111,10 +2180,16 @@
         alert('Enter how many bonus points to give.');
         return;
       }
-      const tip = await db.rpc('tip_child', { p_child_id: goal.child_id, p_amount: amount, p_reason: 'Tip: ' + goal.name });
-      if (!check(tip)) return;
-      await resetOrComplete(goalId);
+      const outcome = goalApprovalOutcome(goal);
+      const { data, error } = await db.rpc('approve_goal', {
+        p_goal_id: goalId, p_new_status: outcome.status, p_new_due: outcome.due, p_tip: amount
+      });
+      if (error) {
+        alert(error.message);
+        return;
+      }
       await refreshAndRender();
+      if (data) showToast('Approved with a +' + amount + ' tip: ' + goal.name, data);
     }
 
     // Tab labels like "Requests (3)" for parents, and the browser tab title
@@ -2520,9 +2595,27 @@
       }
     }
 
+    function goalApprovalOutcome(goal) {
+      const days = goal.recurring_days || [];
+      return days.length
+        ? { status: 'active', due: nextRecurringDate(days, goal.due_date) }
+        : { status: 'completed', due: null };
+    }
+
     async function approveGoal(goalId) {
-      await resetOrComplete(goalId);
+      if (session.role !== 'parent') return;
+      const goal = family.goals.find((g) => g.id === goalId);
+      if (!goal) return;
+      const outcome = goalApprovalOutcome(goal);
+      const { data, error } = await db.rpc('approve_goal', {
+        p_goal_id: goalId, p_new_status: outcome.status, p_new_due: outcome.due, p_tip: 0
+      });
+      if (error) {
+        alert(error.message);
+        return;
+      }
       await refreshAndRender();
+      if (data) showToast('Approved: ' + goal.name, data);
     }
 
     // An active, timed consequence for the same child with the same name: new days get added to it
@@ -2690,11 +2783,123 @@
       await refreshAndRender();
     }
 
+    let toastTimer = null;
+    let toastApprovalId = null;
+
+    function showToast(text, approvalId) {
+      toastApprovalId = approvalId || null;
+      $('#toastText').textContent = text;
+      $('#toastUndo').classList.toggle('hidden', !approvalId);
+      $('#toast').classList.remove('hidden');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(hideToast, 9000);
+    }
+
+    function hideToast() {
+      $('#toast').classList.add('hidden');
+      toastApprovalId = null;
+    }
+
+    async function undoApproval(id, confirmFirst) {
+      if (session.role !== 'parent' || !id) return;
+      if (confirmFirst && !confirm('Undo this approval? Any points it gave will be taken back.')) return;
+      const res = await db.rpc('undo_approval', { p_approval_id: id });
+      if (!check(res)) return;
+      hideToast();
+      await refreshAndRender();
+    }
+
+    function renderApprovals() {
+      if (session.role !== 'parent') return;
+      const list = $('#approvalList');
+      const items = (family.approvals || []).slice(0, 10);
+      if (!items.length) {
+        list.innerHTML = '<div class="empty">No approvals yet. Approvals from now on show here with an Undo button.</div>';
+        return;
+      }
+      list.innerHTML = items.map((a) => {
+        const when = new Date(a.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        return `
+          <article class="row-item">
+            <div class="row-main">
+              <div class="row-title">${esc(childName(a.child_id))}: ${esc(a.label)}</div>
+              <div class="row-meta">${a.kind === 'goal' ? 'Goal' : 'Challenge'} approved · ${when}${a.points ? ' · +' + a.points + ' points' : ''}</div>
+            </div>
+            ${a.undone_at
+              ? '<span class="pill">Undone</span>'
+              : `<button class="btn ghost-danger small" type="button" onclick="undoApproval('${a.id}', true)">Undo</button>`}
+          </article>
+        `;
+      }).join('');
+    }
+
+    let summaryWeek = 'this';
+
+    // Monday to Sunday
+    function weekRange(which) {
+      const now = new Date();
+      const sinceMonday = (now.getDay() + 6) % 7;
+      const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - sinceMonday - (which === 'last' ? 7 : 0));
+      const start = fmtDate(monday);
+      return { start, end: addDays(start, 6) };
+    }
+
+    function renderSummary() {
+      if (session.role !== 'parent') return;
+      const { start, end } = weekRange(summaryWeek);
+      $('#summaryThis').classList.toggle('active', summaryWeek === 'this');
+      $('#summaryLast').classList.toggle('active', summaryWeek === 'last');
+      $('#summaryRange').textContent = prettyDate(start) + ' to ' + prettyDate(end);
+
+      const inRange = (ts) => {
+        const day = fmtDate(new Date(ts));
+        return day >= start && day <= end;
+      };
+
+      if (!family.children.length) {
+        $('#summaryList').innerHTML = '<div class="empty">Add a child to see their weekly summary.</div>';
+        return;
+      }
+
+      $('#summaryList').innerHTML = family.children.map((kid) => {
+        const approvals = (family.approvals || []).filter((a) => a.child_id === kid.id && !a.undone_at && inRange(a.created_at));
+        const challengesDone = approvals.filter((a) => a.kind === 'challenge').length;
+        const goalsDone = approvals.filter((a) => a.kind === 'goal').length;
+        const earned = approvals.reduce((sum, a) => sum + a.points, 0);
+        const redeemed = (family.log || []).filter((e) => e.child_id === kid.id && String(e.reason).startsWith('Redeemed:') && inRange(e.created_at));
+        const spent = redeemed.reduce((sum, e) => sum - e.amount, 0);
+        const consequences = (family.consequences || []).filter((c) => c.child_id === kid.id && inRange(c.created_at));
+        const missed = consequences.filter((c) => c.goal_id).length;
+        return `
+          <article class="item">
+            <div class="kid-top">
+              <span class="avatar">${esc(kid.name.charAt(0).toUpperCase())}</span>
+              <div class="item-title">${esc(kid.name)}</div>
+            </div>
+            <div class="stat-grid">
+              <div class="stat"><strong>${earned}</strong><span>Points earned</span></div>
+              <div class="stat"><strong>${spent}</strong><span>Points spent</span></div>
+              <div class="stat"><strong>${goalsDone}</strong><span>Goals done</span></div>
+              <div class="stat"><strong>${challengesDone}</strong><span>Challenges done</span></div>
+              <div class="stat"><strong>${missed}</strong><span>Goals missed</span></div>
+              <div class="stat"><strong>${consequences.length}</strong><span>Consequences</span></div>
+            </div>
+            <div class="meta">${redeemed.length} ${redeemed.length === 1 ? 'reward' : 'rewards'} redeemed</div>
+          </article>
+        `;
+      }).join('');
+    }
+
     async function approveChallenge(challengeId) {
       if (session.role !== 'parent') return;
-      const res = await db.rpc('approve_challenge', { p_challenge_id: challengeId, p_today: todayStr() });
-      if (!check(res)) return;
+      const challenge = family.challenges.find((c) => c.id === challengeId);
+      const { data, error } = await db.rpc('approve_challenge', { p_challenge_id: challengeId, p_today: todayStr() });
+      if (error) {
+        alert(error.message);
+        return;
+      }
       await refreshAndRender();
+      if (data) showToast('Approved: ' + (challenge ? challenge.name : 'challenge'), data);
     }
 
     async function setChildPoints(childId) {
@@ -2772,8 +2977,12 @@
     $('#goalDueDate').value = nextDate(7);
     $('#rewardUntil').value = nextDate(14);
 
-    setInterval(autoRefresh, 15000);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) autoRefresh(); });
+    $('#summaryThis').addEventListener('click', () => { summaryWeek = 'this'; renderSummary(); });
+    $('#summaryLast').addEventListener('click', () => { summaryWeek = 'last'; renderSummary(); });
+    $('#toastUndo').addEventListener('click', () => undoApproval(toastApprovalId, false));
+
+    setInterval(autoRefresh, 5000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { lastAutoRefresh = 0; autoRefresh(); } });
 
     // Parent sign-in state comes from Supabase Auth; children use a saved token.
     db.auth.onAuthStateChange((event, authSession) => {
