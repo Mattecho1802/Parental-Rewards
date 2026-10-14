@@ -584,6 +584,12 @@
       .cal-more { display: none; }
     }
 
+    .note-card { border-left: 5px solid var(--blue); padding: 14px; gap: 8px; }
+    .note-card.praise { border-left-color: var(--green); }
+    .note-card.reminder { border-left-color: var(--bar-warn); }
+    .note-card.unread { box-shadow: 0 0 0 2px var(--tint-border); }
+    .note-text { white-space: pre-wrap; line-height: 1.45; }
+
     .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 8px; }
     .theme-option { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 10px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-weight: 800; text-align: left; }
     .theme-option.active { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue) inset; }
@@ -881,6 +887,39 @@
           </div>
         </details>
         <div id="goalList" class="list"></div>
+      </section>
+
+      <section id="feedbackSection" class="block" data-view="home">
+        <div class="block-head">
+          <div>
+            <h2 id="feedbackTitle">Feedback</h2>
+            <p class="block-sub" id="feedbackSub"></p>
+          </div>
+        </div>
+        <details class="add-panel parent-only">
+          <summary>+ Give feedback</summary>
+          <div class="add-body">
+            <h3>Give feedback</h3>
+            <form id="feedbackForm" class="form-grid">
+              <div class="field">For
+                <div class="day-picker" id="feedbackChildren"></div>
+              </div>
+              <label>Type
+                <select id="feedbackKind">
+                  <option value="praise">Well done</option>
+                  <option value="note">Note</option>
+                  <option value="reminder">Reminder</option>
+                </select>
+              </label>
+              <label>Message
+                <textarea id="feedbackMessage" required maxlength="500" placeholder="e.g. Great job tidying your room without being asked!"></textarea>
+              </label>
+              <button class="btn" type="submit">Send feedback</button>
+              <p id="feedbackError" class="error"></p>
+            </form>
+          </div>
+        </details>
+        <div id="feedbackList" class="list"></div>
       </section>
 
       <section id="calendarSection" class="block" data-view="calendar">
@@ -1453,7 +1492,7 @@
       if (error) { loading = false; return 'error'; }
       if (!familyRow) { loading = false; return 'expired'; }
 
-      const [childrenRes, challengesRes, goalsRes, rewardsRes, requestsRes, membersRes, logRes, consRes, approvalsRes] = await Promise.all([
+      const [childrenRes, challengesRes, goalsRes, rewardsRes, requestsRes, membersRes, logRes, consRes, approvalsRes, notesRes] = await Promise.all([
         db.from('children').select('id, family_id, name, points, created_at').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('challenges').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('goals').select('*').eq('family_id', familyId).order('due_date', { ascending: true }),
@@ -1462,7 +1501,8 @@
         db.from('family_members').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('points_log').select('*').eq('family_id', familyId).order('created_at', { ascending: false }).limit(500),
         db.from('consequences').select('*').eq('family_id', familyId).order('created_at', { ascending: false }),
-        db.from('approvals').select('*').eq('family_id', familyId).order('created_at', { ascending: false }).limit(200)
+        db.from('approvals').select('*').eq('family_id', familyId).order('created_at', { ascending: false }).limit(200),
+        db.from('notes').select('*').eq('family_id', familyId).order('created_at', { ascending: false }).limit(100)
       ]);
 
       const members = membersRes.data || [];
@@ -1477,7 +1517,8 @@
         parent_emails: members.map((m) => m.email).filter(Boolean),
         log: logRes.data || [],
         consequences: consRes.data || [],
-        approvals: approvalsRes.data || []
+        approvals: approvalsRes.data || [],
+        notes: notesRes.data || []
       };
       const changed = !family || JSON.stringify(next) !== JSON.stringify(family);
       family = next;
@@ -1508,7 +1549,8 @@
         parents: [],
         parent_emails: data.parent_emails || [],
         log: data.log || [],
-        consequences: data.consequences || []
+        consequences: data.consequences || [],
+        notes: data.notes || []
       };
       const changed = !family || JSON.stringify(next) !== JSON.stringify(family);
       family = next;
@@ -1545,7 +1587,7 @@
       if (realtimeChannel || !session || session.role !== 'parent') return;
       const familyId = session.familyId;
       let channel = db.channel('family-' + familyId);
-      ['children', 'challenges', 'goals', 'rewards', 'completion_requests', 'consequences', 'points_log', 'family_members', 'approvals'].forEach((table) => {
+      ['children', 'challenges', 'goals', 'rewards', 'completion_requests', 'consequences', 'points_log', 'family_members', 'approvals', 'notes'].forEach((table) => {
         channel = channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: 'family_id=eq.' + familyId }, () => {
           clearTimeout(realtimeTimer);
           realtimeTimer = setTimeout(() => { lastAutoRefresh = 0; autoRefresh(); }, 300);
@@ -1716,8 +1758,8 @@
 
       // One page, no tabs: show the sections in order of importance for who is signed in
       const order = isParent
-        ? { attentionSection: 0, childrenSection: 1, goalsSection: 2, calendarSection: 3, consequenceSection: 4, challengesSection: 5, rewardsSection: 6, summarySection: 7, historySection: 8, settingsSection: 9, themeSection: 10 }
-        : { consequenceSection: 0, goalsSection: 1, calendarSection: 2, challengesSection: 3, rewardsSection: 4, historySection: 5, themeSection: 6 };
+        ? { attentionSection: 0, childrenSection: 1, goalsSection: 2, feedbackSection: 3, calendarSection: 4, consequenceSection: 5, challengesSection: 6, rewardsSection: 7, summarySection: 8, historySection: 9, settingsSection: 10, themeSection: 11 }
+        : { feedbackSection: 0, consequenceSection: 1, goalsSection: 2, calendarSection: 3, challengesSection: 4, rewardsSection: 5, historySection: 6, themeSection: 7 };
       Object.entries(order).forEach(([id, position]) => { $('#' + id).style.order = position; });
       // Children have no Activity page, so their history sits on their Profile page
       $('#historySection').dataset.view = isParent ? 'activity' : 'settings';
@@ -1729,6 +1771,7 @@
       renderChallenges();
       renderGoalSelect();
       renderConsequenceSelect();
+      renderChildPicker('feedbackChildren');
       renderGoals();
       renderRewards();
       renderConsequences();
@@ -1736,6 +1779,7 @@
       renderHistory();
       renderApprovals();
       renderSummary();
+      renderFeedback();
       renderCalendar();
       updatePushUI();
     }
@@ -1760,7 +1804,7 @@
             </div>
             <span class="pill green">${child.points} points</span>
           </div>
-          <div class="row"><button class="btn ghost small" type="button" onclick="openChildDetail('${child.id}')">View details</button></div>
+          <div class="row"><button class="btn ghost small" type="button" onclick="openChildDetail('${child.id}')">View details</button><button class="btn ghost small" type="button" onclick="openFeedbackFor('${child.id}')">Give feedback</button></div>
           <details class="inline-edit">
             <summary>Manage</summary>
             <div class="row">
@@ -2449,10 +2493,12 @@
       badge.textContent = total;
       badge.classList.toggle('hidden', !total);
       $('#attentionSection').classList.toggle('calm', !total);
+      const unreadNotes = isParent ? 0 : (family.notes || []).filter((n) => n.child_id === session.childId && !n.read_at).length;
+      const badgeCount = isParent ? total : unreadNotes;
       const navBadge = $('#navBadge');
-      navBadge.textContent = total;
-      navBadge.classList.toggle('hidden', !(isParent && total));
-      document.title = isParent && total ? '(' + total + ') Parental Rewards' : 'Parental Rewards';
+      navBadge.textContent = badgeCount;
+      navBadge.classList.toggle('hidden', !badgeCount);
+      document.title = badgeCount ? '(' + badgeCount + ') Parental Rewards' : 'Parental Rewards';
     }
 
     function renderRequests() {
@@ -3306,6 +3352,115 @@
       renderCalendar();
     }
 
+    // ---------- feedback notes ----------
+    const NOTE_LABELS = { praise: 'Well done', note: 'Note', reminder: 'Reminder' };
+
+    function renderFeedback() {
+      const isParent = session.role === 'parent';
+      const child = activeChild();
+      const notes = (family.notes || []).filter((n) => isParent || n.child_id === child.id);
+      const section = $('#feedbackSection');
+      section.classList.toggle('hidden', !isParent && !notes.length);
+      $('#feedbackTitle').textContent = isParent ? 'Feedback' : 'Feedback from your parents';
+      $('#feedbackSub').textContent = isParent
+        ? 'Send a child a note. It is not a consequence.'
+        : 'Messages your parents have sent you.';
+      const list = $('#feedbackList');
+
+      if (!notes.length) {
+        list.innerHTML = '<div class="empty">No feedback sent yet.</div>';
+        return;
+      }
+
+      const when = (ts) => new Date(ts).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+      if (!isParent) {
+        const card = (n) => {
+          const unread = !n.read_at;
+          return `
+            <article class="item note-card ${n.kind}${unread ? ' unread' : ''}">
+              <div class="item-header">
+                <div>
+                  <div class="item-title">${NOTE_LABELS[n.kind] || 'Note'}</div>
+                  <div class="meta">From ${esc(n.author_name || 'your parent')} · ${when(n.created_at)}</div>
+                </div>
+                ${unread ? '<span class="pill amber">New</span>' : ''}
+              </div>
+              <div class="note-text">${esc(n.message)}</div>
+              ${unread ? `<div class="row"><button class="btn success small" type="button" onclick="markNoteRead('${n.id}')">&#10003; Got it</button></div>` : ''}
+            </article>
+          `;
+        };
+        const fresh = notes.filter((n) => !n.read_at);
+        const earlier = notes.filter((n) => n.read_at);
+        list.innerHTML = fresh.map(card).join('')
+          + (earlier.length ? `<details class="done-list"${fresh.length ? '' : ' open'}><summary>Earlier feedback (${earlier.length})</summary>${earlier.map(card).join('')}</details>` : '');
+        return;
+      }
+
+      const row = (n) => `
+        <article class="row-item">
+          <div class="row-main">
+            <div class="row-title">${esc(childName(n.child_id))}: ${esc(n.message)}</div>
+            <div class="row-meta">${NOTE_LABELS[n.kind] || 'Note'} · ${when(n.created_at)} · ${n.read_at ? 'Seen' : 'Not seen yet'}</div>
+          </div>
+          <button class="btn secondary small" type="button" onclick="deleteNote('${n.id}')">Delete</button>
+        </article>
+      `;
+      list.innerHTML = notes.slice(0, 5).map(row).join('')
+        + (notes.length > 5 ? `<details class="done-list"><summary>Older feedback (${notes.length - 5})</summary>${notes.slice(5).map(row).join('')}</details>` : '');
+    }
+
+    async function addFeedback(event) {
+      event.preventDefault();
+      setMessage('#feedbackError', '');
+      const childIds = $$('#feedbackChildren input[data-child]:checked').map((box) => box.value);
+      if (!childIds.length) {
+        setMessage('#feedbackError', 'Pick at least one child.');
+        return;
+      }
+      const message = $('#feedbackMessage').value.trim();
+      if (!message) {
+        setMessage('#feedbackError', 'Write a message first.');
+        return;
+      }
+      const { error } = await db.from('notes').insert(childIds.map((id) => ({
+        family_id: family.id,
+        child_id: id,
+        author_id: session.userId,
+        author_name: session.parentName || 'Your parent',
+        kind: $('#feedbackKind').value,
+        message
+      })));
+      if (error) {
+        setMessage('#feedbackError', error.message);
+        return;
+      }
+      event.target.reset();
+      closeForm('feedbackForm');
+      await refreshAndRender();
+    }
+
+    function openFeedbackFor(childId) {
+      openForm('feedbackForm');
+      setPicker('feedbackChildren', [childId]);
+      $('#feedbackMessage').focus();
+    }
+
+    async function deleteNote(id) {
+      if (session.role !== 'parent') return;
+      if (!confirm('Delete this feedback? The child will no longer see it.')) return;
+      const res = await db.from('notes').delete().eq('id', id);
+      if (!check(res)) return;
+      await refreshAndRender();
+    }
+
+    async function markNoteRead(id) {
+      const res = await db.rpc('child_mark_note_read', { p_token: session.token, p_note_id: id });
+      if (!check(res)) return;
+      await refreshAndRender();
+    }
+
     // ---------- one child's details (parents, from Settings) ----------
     function openChildDetail(childId) {
       if (session.role !== 'parent') return;
@@ -3353,6 +3508,14 @@
             <span class="pill ${e.amount > 0 ? 'green' : 'amber'}">${e.amount > 0 ? '+' : ''}${e.amount}</span>
           </article>`).join('');
 
+      const noteRows = (family.notes || []).filter((n) => n.child_id === childId).slice(0, 5).map((n) => `
+          <article class="row-item">
+            <div class="row-main">
+              <div class="row-title">${esc(n.message)}</div>
+              <div class="row-meta">${NOTE_LABELS[n.kind] || 'Note'} · ${new Date(n.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} · ${n.read_at ? 'Seen' : 'Not seen yet'}</div>
+            </div>
+          </article>`).join('');
+
       const section = (heading, rows, empty) => `<h3>${heading}</h3><div class="list">${rows || `<div class="empty">${empty}</div>`}</div>`;
       const body = `
         <div class="kid-top">
@@ -3363,9 +3526,10 @@
         ${section('Goals', goalRows, 'No open goals.')}
         ${section('Optional challenges', challengeRows, 'No challenges.')}
         ${section('Consequences', consequenceRows, 'No active consequences.')}
+        ${section('Feedback sent', noteRows, 'No feedback sent yet.')}
         ${section('Recent points activity', historyRows, 'No activity yet.')}
       `;
-      showModal(kid.name, body, '');
+      showModal(kid.name, body, `<button class="btn" type="button" onclick="closeModal(); openFeedbackFor('${childId}')">Give feedback</button>`);
     }
 
     let toastTimer = null;
@@ -3534,6 +3698,7 @@
     $('#goalForm').addEventListener('submit', addGoal);
     $('#rewardForm').addEventListener('submit', addReward);
     $('#consequenceForm').addEventListener('submit', addConsequence);
+    $('#feedbackForm').addEventListener('submit', addFeedback);
     $('#rewardCancel').addEventListener('click', cancelEdit);
     $('#consequenceCancel').addEventListener('click', cancelEdit);
     $('#saveFamilyNameBtn').addEventListener('click', renameFamily);
@@ -3548,7 +3713,7 @@
     $('#consequenceChoice').addEventListener('change', updateConsequenceUI);
     updateConsequenceUI();
     updateGoalConsequenceUI();
-    ['challengeChildren', 'goalChildren', 'consequenceChildren'].forEach((id) => {
+    ['challengeChildren', 'goalChildren', 'consequenceChildren', 'feedbackChildren'].forEach((id) => {
       $('#' + id).addEventListener('change', (e) => {
         const kids = $$('#' + id + ' input[data-child]');
         if (e.target.matches('[data-all]')) {
