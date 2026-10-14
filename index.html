@@ -453,6 +453,50 @@
       .row-actions { width: 100%; justify-content: flex-start; }
     }
 
+    .cal-nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .cal-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: var(--muted); font-size: 13px; font-weight: 700; cursor: pointer; }
+    .chip i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .chip.active { color: var(--ink); border-color: #bfd1fb; background: #eef4ff; }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+    .cal-dow { text-align: center; font-size: 12px; font-weight: 800; color: var(--muted); padding: 4px 0; }
+    .cal-cell { min-height: 92px; border: 1px solid var(--line); border-radius: 8px; padding: 4px; background: #fff; cursor: pointer; display: flex; flex-direction: column; gap: 3px; overflow: hidden; }
+    .cal-cell.other { background: #f8fafc; color: #98a2b3; }
+    .cal-cell.today { border-color: var(--blue); }
+    .cal-cell.selected { box-shadow: 0 0 0 2px var(--blue) inset; }
+    .cal-num { font-size: 12px; font-weight: 800; }
+    .cal-chips { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    .cal-chip { font-size: 11px; font-weight: 700; padding: 2px 5px; border-radius: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; cursor: pointer; }
+    .cal-chip.future { opacity: 0.6; }
+    .cal-chip.cont { border-radius: 0; }
+    .t-goal { background: var(--blue); }
+    .t-consequence { background: var(--red); }
+    .t-reward { background: var(--green); }
+    .t-challenge { background: #7c5cff; }
+    .cal-more { font-size: 11px; color: var(--muted); font-weight: 700; }
+    .row-item.clickable { cursor: pointer; }
+    .row-item.clickable:hover { background: #f1f5fb; }
+    .progress.mini { height: 8px; margin-top: 6px; }
+
+    .modal { position: fixed; inset: 0; z-index: 60; background: rgba(16, 24, 40, 0.5); display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .modal-card { background: #fff; border-radius: 12px; width: min(640px, 100%); max-height: 88vh; overflow: auto; padding: 20px; box-shadow: var(--shadow); display: grid; gap: 4px; align-content: start; }
+    .modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+    .modal-head h2 { margin: 0; font-size: 22px; }
+    .modal-card h3 { margin: 16px 0 6px; font-size: 16px; }
+    .kv { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+    .kv span { color: var(--muted); font-weight: 700; }
+    .kv strong { text-align: right; }
+
+    .nav-badge { position: absolute; top: 0; left: calc(50% + 4px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--red); color: #fff; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; }
+
+    @media (max-width: 700px) {
+      .cal-cell { min-height: 54px; align-items: center; }
+      .cal-chips { flex-direction: row; flex-wrap: wrap; gap: 3px; justify-content: center; }
+      .cal-chip { width: 8px; height: 8px; padding: 0; font-size: 0; border-radius: 50%; pointer-events: none; }
+      .cal-chip.cont { border-radius: 50%; }
+      .cal-more { display: none; }
+    }
+
     .mobile-nav { display: none; }
 
     @media (max-width: 900px) {
@@ -470,11 +514,14 @@
       .mobile-nav svg { width: 22px; height: 22px; }
 
       /* Phones: Home shows the dashboard; Settings shows profile, children and family settings */
-      .app-shell .sidebar { display: none; }
-      .app-shell.show-settings .sidebar { display: flex; }
+      .mobile-nav button { position: relative; font-size: 11px; }
+      .app-shell:not([data-view="settings"]) .sidebar { display: none; }
       .app-shell .sidebar-note { display: none; }
-      .app-shell.show-settings main > .home-only { display: none !important; }
-      .app-shell.show-home main > .settings-only { display: none !important; }
+      .app-shell[data-view="home"] main > :not([data-view="home"]) { display: none !important; }
+      .app-shell[data-view="calendar"] main > :not([data-view="calendar"]) { display: none !important; }
+      .app-shell[data-view="rewards"] main > :not([data-view="rewards"]) { display: none !important; }
+      .app-shell[data-view="activity"] main > :not([data-view="activity"]) { display: none !important; }
+      .app-shell[data-view="settings"] main > :not([data-view="settings"]) { display: none !important; }
       main { padding-bottom: 92px; }
       .toast { bottom: 88px; }
     }
@@ -610,7 +657,7 @@
     </div>
   </section>
 
-  <div id="appScreen" class="app-shell show-home hidden">
+  <div id="appScreen" class="app-shell hidden" data-view="home">
     <aside class="sidebar">
       <div class="brand-row">
         <div class="brand-mark">PR</div>
@@ -633,7 +680,7 @@
     </aside>
 
     <main>
-      <header class="topbar home-only">
+      <header class="topbar" data-view="home">
         <div>
           <h1 id="pageTitle">Family Dashboard</h1>
           <p class="subtitle" id="pageSubtitle"></p>
@@ -644,14 +691,14 @@
         </div>
       </header>
 
-      <section id="attentionSection" class="block attention parent-only home-only">
+      <section id="attentionSection" class="block attention parent-only" data-view="home">
         <div class="block-head">
           <h2>Needs your attention <span class="count hidden" id="attentionCount"></span></h2>
         </div>
         <div id="requestList" class="list"></div>
       </section>
 
-      <section id="childrenSection" class="block parent-only settings-only">
+      <section id="childrenSection" class="block parent-only" data-view="settings">
         <div class="block-head">
           <h2>Children</h2>
         </div>
@@ -671,7 +718,7 @@
         <div id="childrenList" class="kid-grid"></div>
       </section>
 
-      <section id="summarySection" class="block parent-only home-only">
+      <section id="summarySection" class="block parent-only" data-view="activity">
         <div class="block-head">
           <div>
             <h2>Weekly summary</h2>
@@ -685,7 +732,7 @@
         <div id="summaryList" class="kid-grid"></div>
       </section>
 
-      <section id="goalsSection" class="block home-only">
+      <section id="goalsSection" class="block" data-view="home">
         <div class="block-head">
           <div>
             <h2>Goals</h2>
@@ -743,7 +790,30 @@
         <div id="goalList" class="list"></div>
       </section>
 
-      <section id="consequenceSection" class="block home-only">
+      <section id="calendarSection" class="block" data-view="calendar">
+        <div class="block-head">
+          <div>
+            <h2>Calendar</h2>
+            <p class="block-sub">Tap a day to see what is on it, then tap an item for details.</p>
+          </div>
+          <div class="cal-nav">
+            <button class="btn ghost small" type="button" id="calPrev" aria-label="Previous month">&lsaquo;</button>
+            <strong id="calTitle"></strong>
+            <button class="btn ghost small" type="button" id="calNext" aria-label="Next month">&rsaquo;</button>
+            <button class="btn ghost small" type="button" id="calToday">Today</button>
+          </div>
+        </div>
+        <div class="cal-filters">
+          <button class="chip active" type="button" data-calfilter="goal"><i style="background:var(--blue)"></i>Goals</button>
+          <button class="chip active" type="button" data-calfilter="consequence"><i style="background:var(--red)"></i>Consequences</button>
+          <button class="chip active" type="button" data-calfilter="reward"><i style="background:var(--green)"></i>Rewards</button>
+          <button class="chip" type="button" data-calfilter="challenge"><i style="background:#7c5cff"></i>Challenges</button>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+        <div id="calDay" class="list"></div>
+      </section>
+
+      <section id="consequenceSection" class="block" data-view="home">
         <div class="block-head">
           <h2>Consequences</h2>
         </div>
@@ -781,7 +851,7 @@
         <div id="consequenceList" class="list"></div>
       </section>
 
-      <section id="challengesSection" class="block challenges-block home-only">
+      <section id="challengesSection" class="block challenges-block" data-view="home">
         <div class="block-head">
           <div>
             <h2>Optional challenges</h2>
@@ -825,7 +895,7 @@
         <div id="challengeList" class="list"></div>
       </section>
 
-      <section id="rewardsSection" class="block home-only">
+      <section id="rewardsSection" class="block" data-view="rewards">
         <div class="block-head">
           <div>
             <h2>Reward shop</h2>
@@ -860,7 +930,7 @@
         <div id="rewardList" class="reward-grid"></div>
       </section>
 
-      <details id="historySection" class="history home-only">
+      <details id="historySection" class="history" data-view="activity">
         <summary>Points history <span class="meta" id="historyCount"></span></summary>
         <div id="approvalSection" class="parent-only">
           <h3 style="margin:8px 0">Recent approvals</h3>
@@ -870,7 +940,7 @@
         <div id="historyList" class="list" style="margin-top:8px"></div>
       </details>
 
-      <details id="settingsSection" class="settings parent-only settings-only">
+      <details id="settingsSection" class="settings parent-only" data-view="settings">
         <summary>Family settings</summary>
         <div class="grid" style="margin-top:12px">
           <div class="panel span-5 parent-only">
@@ -908,12 +978,36 @@
       <button type="button" data-mview="home" class="active">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
         <span>Home</span>
+        <b class="nav-badge hidden" id="navBadge"></b>
+      </button>
+      <button type="button" data-mview="calendar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+        <span>Calendar</span>
+      </button>
+      <button type="button" data-mview="rewards">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="5" rx="1"/><path d="M5 13v8h14v-8M12 8v13"/><path d="M12 8c-1-3-5-4-5-1.5C7 8 12 8 12 8zM12 8c1-3 5-4 5-1.5C17 8 12 8 12 8z"/></svg>
+        <span>Rewards</span>
+      </button>
+      <button type="button" data-mview="activity" id="navActivity">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>
+        <span>Activity</span>
       </button>
       <button type="button" data-mview="settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h8M18 6h2M4 12h2M12 12h8M4 18h10M20 18h0"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>
         <span id="mobileSettingsLabel">Settings</span>
       </button>
     </nav>
+  </div>
+
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 id="modalTitle"></h2>
+        <button class="btn secondary small" type="button" id="modalClose" aria-label="Close">&#10005;</button>
+      </div>
+      <div id="modalBody"></div>
+      <div id="modalActions" class="row" style="margin-top:14px"></div>
+    </div>
   </div>
 
   <div id="toast" class="toast hidden" role="status">
@@ -955,9 +1049,7 @@
     // Phones only: switch between the dashboard and the settings/profile page
     function setMobileView(view) {
       mobileView = view;
-      const shell = $('#appScreen');
-      shell.classList.toggle('show-home', view === 'home');
-      shell.classList.toggle('show-settings', view === 'settings');
+      $('#appScreen').dataset.view = view;
       $$('[data-mview]').forEach((button) => button.classList.toggle('active', button.dataset.mview === view));
       if (view === 'settings') $('#settingsSection').open = true;
       window.scrollTo(0, 0);
@@ -1523,9 +1615,12 @@
 
       // One page, no tabs: show the sections in order of importance for who is signed in
       const order = isParent
-        ? { attentionSection: 0, childrenSection: 1, goalsSection: 2, consequenceSection: 3, challengesSection: 4, rewardsSection: 5, summarySection: 6, historySection: 7, settingsSection: 8 }
-        : { consequenceSection: 0, goalsSection: 1, challengesSection: 2, rewardsSection: 3, historySection: 4 };
+        ? { attentionSection: 0, childrenSection: 1, goalsSection: 2, calendarSection: 3, consequenceSection: 4, challengesSection: 5, rewardsSection: 6, summarySection: 7, historySection: 8, settingsSection: 9 }
+        : { consequenceSection: 0, goalsSection: 1, calendarSection: 2, challengesSection: 3, rewardsSection: 4, historySection: 5 };
       Object.entries(order).forEach(([id, position]) => { $('#' + id).style.order = position; });
+      // Children have no Activity page, so their history sits on their Profile page
+      $('#historySection').dataset.view = isParent ? 'activity' : 'settings';
+      $('#navActivity').classList.toggle('hidden', !isParent);
 
       renderParents();
       renderChildren();
@@ -1540,6 +1635,7 @@
       renderHistory();
       renderApprovals();
       renderSummary();
+      renderCalendar();
       updatePushUI();
     }
 
@@ -1563,6 +1659,7 @@
             </div>
             <span class="pill green">${child.points} points</span>
           </div>
+          <div class="row"><button class="btn ghost small" type="button" onclick="openChildDetail('${child.id}')">View details</button></div>
           <details class="inline-edit">
             <summary>Manage</summary>
             <div class="row">
@@ -1666,10 +1763,13 @@
 
     function openForm(formId) {
       const details = $('#' + formId).closest('details');
-      if (details) {
-        details.open = true;
-        details.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
+      if (!details) return;
+      // On phones the form may be on another page: switch to it first
+      let top = details;
+      while (top.parentElement && top.parentElement.tagName !== 'MAIN') top = top.parentElement;
+      if (top.dataset.view && mobileView !== top.dataset.view) setMobileView(top.dataset.view);
+      details.open = true;
+      details.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     function closeForm(formId) {
@@ -2248,6 +2348,9 @@
       badge.textContent = total;
       badge.classList.toggle('hidden', !total);
       $('#attentionSection').classList.toggle('calm', !total);
+      const navBadge = $('#navBadge');
+      navBadge.textContent = total;
+      navBadge.classList.toggle('hidden', !(isParent && total));
       document.title = isParent && total ? '(' + total + ') Parental Rewards' : 'Parental Rewards';
     }
 
@@ -2830,6 +2933,291 @@
       await refreshAndRender();
     }
 
+    // ---------- modal ----------
+    function showModal(title, bodyHtml, actionsHtml) {
+      $('#modalTitle').textContent = title;
+      $('#modalBody').innerHTML = bodyHtml;
+      $('#modalActions').innerHTML = actionsHtml || '';
+      $('#modal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      $('#modal').classList.add('hidden');
+    }
+
+    function kv(label, value) {
+      return value ? `<div class="kv"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>` : '';
+    }
+
+    // Same colours and wording as the goal cards
+    function goalDisplay(goal) {
+      const p = goalProgress(goal);
+      const upcoming = isWaitingForNextDay(goal);
+      let tone = 'ok';
+      let fill = p.pct;
+      let label;
+      if (goal.status === 'waiting') {
+        tone = 'wait'; fill = 100; label = 'Waiting for approval';
+      } else if (goal.status === 'consequence') {
+        tone = 'bad'; fill = 100; label = 'Consequence active';
+      } else if (p.daysLeft < 0) {
+        tone = 'bad'; fill = 100; label = 'Overdue by ' + (-p.daysLeft) + (p.daysLeft === -1 ? ' day' : ' days');
+      } else if (upcoming) {
+        fill = 0; label = 'Next one starts ' + (p.daysLeft === 1 ? 'tomorrow' : 'in ' + p.daysLeft + ' days');
+      } else {
+        tone = p.pct >= 85 ? 'bad' : p.pct >= 60 ? 'warn' : 'ok';
+        label = p.daysLeft === 0 ? 'Due today, ends tonight' : p.daysLeft === 1 ? '1 day left' : p.daysLeft + ' days left';
+      }
+      return { tone, fill, label };
+    }
+
+    function editItem(type, id) {
+      closeModal();
+      ({ goal: startEditGoal, consequence: startEditConsequence, reward: startEditReward, challenge: startEditChallenge })[type](id);
+    }
+
+    function modalApproveGoal(id) { closeModal(); approveGoal(id); }
+    function modalResolve(id) { closeModal(); resolveConsequence(id); }
+    function modalRedeem(id) { closeModal(); claimReward(id); }
+
+    const TYPE_LABELS = { goal: 'Goal', consequence: 'Consequence', reward: 'Reward', challenge: 'Challenge' };
+
+    function openCalendarItem(type, id) {
+      const isParent = session.role === 'parent';
+      let title = '';
+      let body = '';
+      let actions = '';
+
+      if (type === 'goal') {
+        const g = family.goals.find((x) => x.id === id);
+        if (!g) return;
+        const d = goalDisplay(g);
+        title = g.name;
+        body = kv('For', isParent ? childName(g.child_id) : '')
+          + kv('Status', goalStatusLabel(g))
+          + kv('Due', prettyDate(g.due_date) + ' (end of day)')
+          + kv('Time', d.label)
+          + kv('Repeats', (g.recurring_days || []).length ? [...g.recurring_days].sort().map((n) => DAY_NAMES[n]).join(', ') : '')
+          + kv('If missed', (g.consequence || '') + (g.consequence_days ? ' (for ' + g.consequence_days + (g.consequence_days === 1 ? ' day)' : ' days)') : ''))
+          + kv('Details', g.details)
+          + `<div class="progress ${d.tone}" style="margin-top:12px"><span style="width:${d.fill}%"></span></div>`;
+        if (isParent) {
+          if (g.status === 'waiting') actions += approveIconBtn(`modalApproveGoal('${id}')`);
+          actions += `<button class="btn secondary" type="button" onclick="editItem('goal', '${id}')">Edit</button>`;
+        }
+      } else if (type === 'consequence') {
+        const c = family.consequences.find((x) => x.id === id);
+        if (!c) return;
+        title = c.name;
+        body = kv('For', isParent ? childName(c.child_id) : '')
+          + kv('Started', prettyDate(c.starts_on))
+          + kv('Ends', c.ends_on ? prettyDate(c.ends_on) + ' (end of day)' : 'No end date')
+          + kv('Details', c.details);
+        if (isParent) {
+          actions += `<button class="btn success" type="button" onclick="modalResolve('${id}')">Mark resolved</button>`;
+          actions += `<button class="btn secondary" type="button" onclick="editItem('consequence', '${id}')">Edit</button>`;
+        }
+      } else if (type === 'reward') {
+        const r = family.rewards.find((x) => x.id === id);
+        if (!r) return;
+        const remaining = r.limit_count - r.claimed_count;
+        title = r.name;
+        body = kv('Cost', r.cost + ' points')
+          + kv('Left', remaining + ' of ' + r.limit_count)
+          + kv('Available until', prettyDate(r.available_until));
+        if (isParent) {
+          actions += `<button class="btn secondary" type="button" onclick="editItem('reward', '${id}')">Edit</button>`;
+        } else {
+          const kid = activeChild();
+          const canClaim = kid && kid.points >= r.cost && remaining > 0 && r.available_until >= todayStr();
+          body += kv('Your points', String(kid ? kid.points : 0));
+          if (canClaim) actions += `<button class="btn" type="button" onclick="modalRedeem('${id}')">Redeem</button>`;
+        }
+      } else if (type === 'challenge') {
+        const c = family.challenges.find((x) => x.id === id);
+        if (!c) return;
+        title = c.name;
+        body = kv('For', isParent ? childName(c.child_id) : '')
+          + kv('Points', c.points + ' points')
+          + kv('Repeats', (c.recurring_days || []).length ? [...c.recurring_days].sort().map((n) => DAY_NAMES[n]).join(', ') : 'One-off')
+          + kv('Details', c.details);
+        if (isParent) actions += `<button class="btn secondary" type="button" onclick="editItem('challenge', '${id}')">Edit</button>`;
+      } else {
+        return;
+      }
+      showModal(title, body, actions);
+    }
+
+    // ---------- calendar ----------
+    let calMonth = { y: new Date().getFullYear(), m: new Date().getMonth() };
+    let calSelected = null;
+    const calFilter = { goal: true, consequence: true, reward: true, challenge: false };
+
+    function calGridRange() {
+      const first = fmtDate(new Date(calMonth.y, calMonth.m, 1));
+      const last = fmtDate(new Date(calMonth.y, calMonth.m + 1, 0));
+      const lead = (weekdayOf(first) + 6) % 7;
+      const tail = 6 - ((weekdayOf(last) + 6) % 7);
+      return { first, last, start: addDays(first, -lead), end: addDays(last, tail) };
+    }
+
+    function calendarEvents(start, end) {
+      const isParent = session.role === 'parent';
+      const child = activeChild();
+      const mine = (x) => isParent || x.child_id === child.id;
+      const who = (id) => (isParent ? childName(id) + ': ' : '');
+      const dates = [];
+      for (let d = start; d <= end; d = addDays(d, 1)) dates.push(d);
+      const events = [];
+
+      if (calFilter.goal) {
+        family.goals.filter(mine).forEach((g) => {
+          if (g.status === 'completed') return;
+          const days = g.recurring_days || [];
+          if (g.due_date >= start && g.due_date <= end) events.push({ date: g.due_date, type: 'goal', id: g.id, title: who(g.child_id) + g.name });
+          if (days.length) {
+            dates.forEach((d) => {
+              if (d > g.due_date && days.includes(weekdayOf(d))) events.push({ date: d, type: 'goal', id: g.id, title: who(g.child_id) + g.name, future: true });
+            });
+          }
+        });
+      }
+      if (calFilter.consequence) {
+        (family.consequences || []).filter((c) => c.status === 'active' && mine(c)).forEach((c) => {
+          const lastDay = c.ends_on || c.starts_on;
+          dates.forEach((d) => {
+            if (d >= c.starts_on && d <= lastDay) events.push({ date: d, type: 'consequence', id: c.id, title: who(c.child_id) + c.name, cont: d !== c.starts_on });
+          });
+        });
+      }
+      if (calFilter.reward) {
+        family.rewards.forEach((r) => {
+          if (r.available_until >= start && r.available_until <= end) events.push({ date: r.available_until, type: 'reward', id: r.id, title: 'Ends: ' + r.name });
+        });
+      }
+      if (calFilter.challenge) {
+        family.challenges.filter(mine).forEach((c) => {
+          const days = c.recurring_days || [];
+          if (!days.length) return;
+          const created = c.created_at ? fmtDate(new Date(c.created_at)) : start;
+          dates.forEach((d) => {
+            if (d >= created && days.includes(weekdayOf(d))) events.push({ date: d, type: 'challenge', id: c.id, title: who(c.child_id) + c.name });
+          });
+        });
+      }
+      return events;
+    }
+
+    function renderCalendar() {
+      if (!calSelected) calSelected = todayStr();
+      const { start, end, first } = calGridRange();
+      const events = calendarEvents(start, end);
+      const byDate = {};
+      events.forEach((e) => { (byDate[e.date] = byDate[e.date] || []).push(e); });
+
+      $('#calTitle').textContent = new Date(calMonth.y, calMonth.m, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      $$('[data-calfilter]').forEach((button) => button.classList.toggle('active', calFilter[button.dataset.calfilter]));
+
+      const today = todayStr();
+      let html = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => `<div class="cal-dow">${d}</div>`).join('');
+      for (let d = start; d <= end; d = addDays(d, 1)) {
+        const items = byDate[d] || [];
+        const other = d.slice(0, 7) !== first.slice(0, 7);
+        html += `
+          <div class="cal-cell${other ? ' other' : ''}${d === today ? ' today' : ''}${d === calSelected ? ' selected' : ''}" data-cal-date="${d}">
+            <div class="cal-num">${Number(d.slice(8))}</div>
+            <div class="cal-chips">
+              ${items.slice(0, 3).map((e) => `<span class="cal-chip t-${e.type}${e.future ? ' future' : ''}${e.cont ? ' cont' : ''}" data-cal-item="${e.type}:${e.id}" title="${esc(e.title)}">${esc(e.title)}</span>`).join('')}
+              ${items.length > 3 ? `<span class="cal-more">+${items.length - 3} more</span>` : ''}
+            </div>
+          </div>
+        `;
+      }
+      $('#calGrid').innerHTML = html;
+
+      const dayItems = byDate[calSelected] || [];
+      $('#calDay').innerHTML = `<h3 style="margin:8px 0 0">${prettyDate(calSelected)}</h3>`
+        + (dayItems.length
+          ? dayItems.map((e) => `
+              <article class="row-item clickable" data-cal-item="${e.type}:${e.id}">
+                <div class="row-main">
+                  <div class="row-title">${esc(e.title)}</div>
+                  <div class="row-meta">${TYPE_LABELS[e.type]}${e.future ? ' · upcoming' : ''}${e.cont ? ' · ongoing' : ''}</div>
+                </div>
+                <span class="pill">${TYPE_LABELS[e.type]}</span>
+              </article>`).join('')
+          : '<div class="empty">Nothing on this day.</div>');
+    }
+
+    function shiftMonth(delta) {
+      const d = new Date(calMonth.y, calMonth.m + delta, 1);
+      calMonth = { y: d.getFullYear(), m: d.getMonth() };
+      calSelected = todayStr().slice(0, 7) === fmtDate(d).slice(0, 7) ? todayStr() : fmtDate(d);
+      renderCalendar();
+    }
+
+    // ---------- one child's details (parents, from Settings) ----------
+    function openChildDetail(childId) {
+      if (session.role !== 'parent') return;
+      const kid = family.children.find((c) => c.id === childId);
+      if (!kid) return;
+      const today = todayStr();
+
+      const goalRows = family.goals.filter((g) => g.child_id === childId && g.status !== 'completed').map((g) => {
+        const d = goalDisplay(g);
+        return `
+          <article class="row-item">
+            <div class="row-main">
+              <div class="row-title">${esc(g.name)}</div>
+              <div class="row-meta">${esc(d.label)} · due ${prettyDate(g.due_date)}</div>
+              <div class="progress mini ${d.tone}"><span style="width:${d.fill}%"></span></div>
+            </div>
+            <button class="btn secondary small" type="button" onclick="editItem('goal', '${g.id}')">Edit</button>
+          </article>`;
+      }).join('');
+
+      const challengeRows = family.challenges.filter((c) => c.child_id === childId).map((c) => `
+          <article class="row-item">
+            <div class="row-main">
+              <div class="row-title">${esc(c.name)}</div>
+              <div class="row-meta">${c.points} points${(c.recurring_days || []).length ? ' · repeats ' + [...c.recurring_days].sort().map((n) => DAY_NAMES[n]).join(', ') : ''}</div>
+            </div>
+            <button class="btn secondary small" type="button" onclick="editItem('challenge', '${c.id}')">Edit</button>
+          </article>`).join('');
+
+      const consequenceRows = (family.consequences || []).filter((c) => c.child_id === childId && c.status === 'active').map((c) => `
+          <article class="row-item">
+            <div class="row-main">
+              <div class="row-title">${esc(c.name)}</div>
+              <div class="row-meta">${c.ends_on ? (c.ends_on < today ? 'Ended ' : 'Ends ') + prettyDate(c.ends_on) : 'No end date'}</div>
+            </div>
+            <button class="btn secondary small" type="button" onclick="editItem('consequence', '${c.id}')">Edit</button>
+          </article>`).join('');
+
+      const historyRows = (family.log || []).filter((e) => e.child_id === childId).slice(0, 8).map((e) => `
+          <article class="row-item">
+            <div class="row-main">
+              <div class="row-title">${esc(e.reason)}</div>
+              <div class="row-meta">${new Date(e.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+            </div>
+            <span class="pill ${e.amount > 0 ? 'green' : 'amber'}">${e.amount > 0 ? '+' : ''}${e.amount}</span>
+          </article>`).join('');
+
+      const section = (heading, rows, empty) => `<h3>${heading}</h3><div class="list">${rows || `<div class="empty">${empty}</div>`}</div>`;
+      const body = `
+        <div class="kid-top">
+          <span class="avatar">${esc(kid.name.charAt(0).toUpperCase())}</span>
+          <div class="item-title">${esc(kid.name)}</div>
+          <span class="pill green">${kid.points} points</span>
+        </div>
+        ${section('Goals', goalRows, 'No open goals.')}
+        ${section('Optional challenges', challengeRows, 'No challenges.')}
+        ${section('Consequences', consequenceRows, 'No active consequences.')}
+        ${section('Recent points activity', historyRows, 'No activity yet.')}
+      `;
+      showModal(kid.name, body, '');
+    }
+
     let toastTimer = null;
     let toastApprovalId = null;
 
@@ -3029,6 +3417,33 @@
     $('#summaryLast').addEventListener('click', () => { summaryWeek = 'last'; renderSummary(); });
     $('#toastUndo').addEventListener('click', () => undoApproval(toastApprovalId, false));
     $$('[data-mview]').forEach((button) => button.addEventListener('click', () => setMobileView(button.dataset.mview)));
+    $('#calPrev').addEventListener('click', () => shiftMonth(-1));
+    $('#calNext').addEventListener('click', () => shiftMonth(1));
+    $('#calToday').addEventListener('click', () => {
+      calMonth = { y: new Date().getFullYear(), m: new Date().getMonth() };
+      calSelected = todayStr();
+      renderCalendar();
+    });
+    $$('[data-calfilter]').forEach((button) => button.addEventListener('click', () => {
+      calFilter[button.dataset.calfilter] = !calFilter[button.dataset.calfilter];
+      renderCalendar();
+    }));
+    $('#calendarSection').addEventListener('click', (e) => {
+      const item = e.target.closest('[data-cal-item]');
+      if (item) {
+        const [type, id] = item.dataset.calItem.split(':');
+        openCalendarItem(type, id);
+        return;
+      }
+      const cell = e.target.closest('[data-cal-date]');
+      if (cell) {
+        calSelected = cell.dataset.calDate;
+        renderCalendar();
+      }
+    });
+    $('#modalClose').addEventListener('click', closeModal);
+    $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 
     setInterval(autoRefresh, 5000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { lastAutoRefresh = 0; autoRefresh(); } });
