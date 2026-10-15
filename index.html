@@ -909,7 +909,7 @@
               <label>Activity
                 <input id="activityTitle" required maxlength="120" placeholder="Football training" />
               </label>
-              <label>Date <span class="meta">(or the first day, if it repeats)</span>
+              <label>Date <span class="meta" id="activityDateNote"></span>
                 <input id="activityDate" type="date" required />
               </label>
               <div class="field">Repeats every (leave all unticked for a one-off)
@@ -1995,6 +1995,7 @@
     function cancelEdit() {
       editing = null;
       ['challengeForm', 'goalForm', 'rewardForm', 'consequenceForm', 'activityForm'].forEach((id) => $('#' + id).reset());
+      lastManualActivityDate = null;
       $('#activityDate').value = todayStr();
       $('#challengePoints').value = 10;
       $('#goalDueDate').value = nextDate(7);
@@ -3477,9 +3478,23 @@
       return 'Every ' + names + ' from ' + prettyDate(a.activity_date) + (a.repeat_until ? ' until ' + prettyDate(a.repeat_until) : '');
     }
 
+    let lastManualActivityDate = null;
+
+    // When it repeats, the date is worked out from the ticked days and greyed out
     function updateActivityUI() {
-      const repeating = $$('#activityDays input:checked').length > 0;
+      const days = $$('#activityDays input:checked').map((box) => Number(box.value));
+      const repeating = days.length > 0;
+      const dateInput = $('#activityDate');
       $('#activityUntilWrap').classList.toggle('hidden', !repeating);
+      dateInput.disabled = repeating;
+      $('#activityDateNote').textContent = repeating ? '(set automatically from the repeat days)' : '';
+      if (repeating) {
+        const existing = editing?.type === 'activity' ? (family.activities || []).find((a) => a.id === editing.id) : null;
+        const sameDays = existing && [...(existing.recurring_days || [])].sort().join() === [...days].sort().join();
+        dateInput.value = sameDays ? existing.activity_date : firstOccurrence(days);
+      } else {
+        dateInput.value = lastManualActivityDate || todayStr();
+      }
     }
 
     function renderActivities() {
@@ -3529,6 +3544,12 @@
         : '<div class="empty">No activities yet.</div>';
     }
 
+    function activityDateFor(days) {
+      const existing = editing?.type === 'activity' ? (family.activities || []).find((a) => a.id === editing.id) : null;
+      const sameDays = existing && [...(existing.recurring_days || [])].sort().join() === [...days].sort().join();
+      return sameDays ? existing.activity_date : firstOccurrence(days);
+    }
+
     async function addActivity(event) {
       event.preventDefault();
       setMessage('#activityError', '');
@@ -3552,7 +3573,7 @@
       const fields = {
         title: $('#activityTitle').value.trim(),
         details: $('#activityDetails').value.trim() || null,
-        activity_date: $('#activityDate').value,
+        activity_date: days.length ? activityDateFor(days) : $('#activityDate').value,
         recurring_days: days,
         repeat_until: days.length && $('#activityUntil').value ? $('#activityUntil').value : null,
         start_time: start || null,
@@ -3578,6 +3599,7 @@
         return;
       }
       event.target.reset();
+      lastManualActivityDate = null;
       $('#activityDate').value = todayStr();
       updateActivityUI();
       closeForm('activityForm');
@@ -3591,6 +3613,7 @@
       editing = { type: 'activity', id };
       $('#activityTitle').value = a.title;
       $('#activityDate').value = a.activity_date;
+      lastManualActivityDate = (a.recurring_days || []).length ? null : a.activity_date;
       $('#activityStart').value = fmtTime(a.start_time);
       $('#activityEnd').value = fmtTime(a.end_time);
       $('#activityLeave').value = fmtTime(a.leave_time);
@@ -3975,6 +3998,7 @@
     $('#activityForm').addEventListener('submit', addActivity);
     $('#activityCancel').addEventListener('click', cancelEdit);
     $('#activityDays').addEventListener('change', updateActivityUI);
+    $('#activityDate').addEventListener('change', () => { if (!$('#activityDate').disabled) lastManualActivityDate = $('#activityDate').value; });
     $('#rewardCancel').addEventListener('click', cancelEdit);
     $('#consequenceCancel').addEventListener('click', cancelEdit);
     $('#saveFamilyNameBtn').addEventListener('click', renameFamily);
