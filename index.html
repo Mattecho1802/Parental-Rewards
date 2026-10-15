@@ -560,6 +560,7 @@
     .t-consequence { background: var(--red); }
     .t-reward { background: var(--green); }
     .t-challenge { background: #7c5cff; }
+    .t-activity { background: #0e9aa7; }
     .cal-more { font-size: 11px; color: var(--muted); font-weight: 700; }
     .row-item.clickable { cursor: pointer; }
     .row-item.clickable:hover { background: var(--hover-row); }
@@ -621,7 +622,8 @@
       .app-shell[data-view="rewards"] main > :not([data-view="rewards"]) { display: none !important; }
       .app-shell[data-view="activity"] main > :not([data-view="activity"]) { display: none !important; }
       .app-shell[data-view="settings"] main > :not([data-view="settings"]) { display: none !important; }
-      main { padding-bottom: 92px; }
+      .app-shell main { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+      html { scroll-padding-bottom: 110px; }
       .toast { bottom: 88px; }
     }
 
@@ -889,6 +891,68 @@
         <div id="goalList" class="list"></div>
       </section>
 
+      <section id="activitiesSection" class="block" data-view="home">
+        <div class="block-head">
+          <div>
+            <h2>Activities</h2>
+            <p class="block-sub">Clubs, lessons and appointments coming up.</p>
+          </div>
+        </div>
+        <details class="add-panel parent-only">
+          <summary>+ Add activity</summary>
+          <div class="add-body">
+            <h3 id="activityFormTitle">Add activity</h3>
+            <form id="activityForm" class="form-grid">
+              <div class="field">For
+                <div class="day-picker" id="activityChildren"></div>
+              </div>
+              <label>Activity
+                <input id="activityTitle" required maxlength="120" placeholder="Football training" />
+              </label>
+              <label>Date <span class="meta">(or the first day, if it repeats)</span>
+                <input id="activityDate" type="date" required />
+              </label>
+              <div class="field">Repeats every (leave all unticked for a one-off)
+                <div class="day-picker" id="activityDays">
+                  <label><input type="checkbox" value="1" /> Mon</label>
+                  <label><input type="checkbox" value="2" /> Tue</label>
+                  <label><input type="checkbox" value="3" /> Wed</label>
+                  <label><input type="checkbox" value="4" /> Thu</label>
+                  <label><input type="checkbox" value="5" /> Fri</label>
+                  <label><input type="checkbox" value="6" /> Sat</label>
+                  <label><input type="checkbox" value="0" /> Sun</label>
+                </div>
+              </div>
+              <label id="activityUntilWrap" class="hidden">Repeat until <span class="meta">(optional)</span>
+                <input id="activityUntil" type="date" />
+              </label>
+              <div class="row">
+                <label style="flex:1;min-width:110px">Starts
+                  <input id="activityStart" type="time" />
+                </label>
+                <label style="flex:1;min-width:110px">Finishes
+                  <input id="activityEnd" type="time" />
+                </label>
+                <label style="flex:1;min-width:110px">Leave by
+                  <input id="activityLeave" type="time" />
+                </label>
+              </div>
+              <label>Extra details
+                <textarea id="activityDetails" placeholder="e.g. Bring boots and a water bottle. Pitch 3."></textarea>
+              </label>
+              <button class="btn" id="activitySubmit" type="submit">Add activity</button>
+              <button class="btn secondary hidden" id="activityCancel" type="button">Cancel edit</button>
+              <p id="activityError" class="error"></p>
+            </form>
+          </div>
+        </details>
+        <div id="activityUpcoming" class="list"></div>
+        <details class="done-list" id="activityAll">
+          <summary id="activityAllSummary">All activities</summary>
+          <div id="activityList" class="list" style="margin-top:8px"></div>
+        </details>
+      </section>
+
       <section id="feedbackSection" class="block" data-view="home">
         <div class="block-head">
           <div>
@@ -939,6 +1003,7 @@
           <button class="chip active" type="button" data-calfilter="goal"><i style="background:var(--blue)"></i>Goals</button>
           <button class="chip active" type="button" data-calfilter="consequence"><i style="background:var(--red)"></i>Consequences</button>
           <button class="chip active" type="button" data-calfilter="reward"><i style="background:var(--green)"></i>Rewards</button>
+          <button class="chip active" type="button" data-calfilter="activity"><i style="background:#0e9aa7"></i>Activities</button>
           <button class="chip" type="button" data-calfilter="challenge"><i style="background:#7c5cff"></i>Challenges</button>
         </div>
         <div class="cal-grid" id="calGrid"></div>
@@ -1492,7 +1557,7 @@
       if (error) { loading = false; return 'error'; }
       if (!familyRow) { loading = false; return 'expired'; }
 
-      const [childrenRes, challengesRes, goalsRes, rewardsRes, requestsRes, membersRes, logRes, consRes, approvalsRes, notesRes] = await Promise.all([
+      const [childrenRes, challengesRes, goalsRes, rewardsRes, requestsRes, membersRes, logRes, consRes, approvalsRes, notesRes, activitiesRes] = await Promise.all([
         db.from('children').select('id, family_id, name, points, created_at').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('challenges').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('goals').select('*').eq('family_id', familyId).order('due_date', { ascending: true }),
@@ -1502,7 +1567,8 @@
         db.from('points_log').select('*').eq('family_id', familyId).order('created_at', { ascending: false }).limit(500),
         db.from('consequences').select('*').eq('family_id', familyId).order('created_at', { ascending: false }),
         db.from('approvals').select('*').eq('family_id', familyId).order('created_at', { ascending: false }).limit(200),
-        db.from('notes').select('*').eq('family_id', familyId).order('created_at', { ascending: false }).limit(100)
+        db.from('notes').select('*').eq('family_id', familyId).order('created_at', { ascending: false }).limit(100),
+        db.from('activities').select('*').eq('family_id', familyId).order('activity_date', { ascending: true })
       ]);
 
       const members = membersRes.data || [];
@@ -1518,7 +1584,8 @@
         log: logRes.data || [],
         consequences: consRes.data || [],
         approvals: approvalsRes.data || [],
-        notes: notesRes.data || []
+        notes: notesRes.data || [],
+        activities: activitiesRes.data || []
       };
       const changed = !family || JSON.stringify(next) !== JSON.stringify(family);
       family = next;
@@ -1550,7 +1617,8 @@
         parent_emails: data.parent_emails || [],
         log: data.log || [],
         consequences: data.consequences || [],
-        notes: data.notes || []
+        notes: data.notes || [],
+        activities: data.activities || []
       };
       const changed = !family || JSON.stringify(next) !== JSON.stringify(family);
       family = next;
@@ -1587,7 +1655,7 @@
       if (realtimeChannel || !session || session.role !== 'parent') return;
       const familyId = session.familyId;
       let channel = db.channel('family-' + familyId);
-      ['children', 'challenges', 'goals', 'rewards', 'completion_requests', 'consequences', 'points_log', 'family_members', 'approvals', 'notes'].forEach((table) => {
+      ['children', 'challenges', 'goals', 'rewards', 'completion_requests', 'consequences', 'points_log', 'family_members', 'approvals', 'notes', 'activities'].forEach((table) => {
         channel = channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: 'family_id=eq.' + familyId }, () => {
           clearTimeout(realtimeTimer);
           realtimeTimer = setTimeout(() => { lastAutoRefresh = 0; autoRefresh(); }, 300);
@@ -1758,8 +1826,8 @@
 
       // One page, no tabs: show the sections in order of importance for who is signed in
       const order = isParent
-        ? { attentionSection: 0, childrenSection: 1, goalsSection: 2, feedbackSection: 3, calendarSection: 4, consequenceSection: 5, challengesSection: 6, rewardsSection: 7, summarySection: 8, historySection: 9, settingsSection: 10, themeSection: 11 }
-        : { feedbackSection: 0, consequenceSection: 1, goalsSection: 2, calendarSection: 3, challengesSection: 4, rewardsSection: 5, historySection: 6, themeSection: 7 };
+        ? { attentionSection: 0, childrenSection: 1, goalsSection: 2, activitiesSection: 3, feedbackSection: 4, calendarSection: 5, consequenceSection: 6, challengesSection: 7, rewardsSection: 8, summarySection: 9, historySection: 10, settingsSection: 11, themeSection: 12 }
+        : { feedbackSection: 0, consequenceSection: 1, goalsSection: 2, activitiesSection: 3, calendarSection: 4, challengesSection: 5, rewardsSection: 6, historySection: 7, themeSection: 8 };
       Object.entries(order).forEach(([id, position]) => { $('#' + id).style.order = position; });
       // Children have no Activity page, so their history sits on their Profile page
       $('#historySection').dataset.view = isParent ? 'activity' : 'settings';
@@ -1772,6 +1840,7 @@
       renderGoalSelect();
       renderConsequenceSelect();
       renderChildPicker('feedbackChildren');
+      renderChildPicker('activityChildren');
       renderGoals();
       renderRewards();
       renderConsequences();
@@ -1779,6 +1848,7 @@
       renderHistory();
       renderApprovals();
       renderSummary();
+      renderActivities();
       renderFeedback();
       renderCalendar();
       updatePushUI();
@@ -1924,7 +1994,8 @@
 
     function cancelEdit() {
       editing = null;
-      ['challengeForm', 'goalForm', 'rewardForm', 'consequenceForm'].forEach((id) => $('#' + id).reset());
+      ['challengeForm', 'goalForm', 'rewardForm', 'consequenceForm', 'activityForm'].forEach((id) => $('#' + id).reset());
+      $('#activityDate').value = todayStr();
       $('#challengePoints').value = 10;
       $('#goalDueDate').value = nextDate(7);
       $('#rewardCost').value = 50;
@@ -1934,17 +2005,20 @@
       $('#goalFormTitle').textContent = 'Add goal';
       $('#rewardFormTitle').textContent = 'Add reward';
       $('#consequenceFormTitle').textContent = 'Add consequence';
+      $('#activityFormTitle').textContent = 'Add activity';
       $('#challengeSubmit').textContent = 'Create challenge';
       $('#goalSubmit').textContent = 'Create goal';
       $('#rewardSubmit').textContent = 'Create reward';
       $('#consequenceSubmit').textContent = 'Add consequence';
-      ['challengeCancel', 'goalCancel', 'rewardCancel', 'consequenceCancel'].forEach((id) => $('#' + id).classList.add('hidden'));
-      ['#challengeError', '#goalError', '#rewardError', '#consequenceError'].forEach((id) => setMessage(id, ''));
+      $('#activitySubmit').textContent = 'Add activity';
+      ['challengeCancel', 'goalCancel', 'rewardCancel', 'consequenceCancel', 'activityCancel'].forEach((id) => $('#' + id).classList.add('hidden'));
+      ['#challengeError', '#goalError', '#rewardError', '#consequenceError', '#activityError'].forEach((id) => setMessage(id, ''));
       updateGoalDueState();
       updateGoalConsequenceUI();
       updateConsequenceUI();
-      ['challengeForm', 'goalForm', 'rewardForm', 'consequenceForm'].forEach(closeForm);
-      if (family) { renderChallengeSelect(); renderGoalSelect(); renderConsequenceSelect(); }
+      updateActivityUI();
+      ['challengeForm', 'goalForm', 'rewardForm', 'consequenceForm', 'activityForm'].forEach(closeForm);
+      if (family) { renderChallengeSelect(); renderGoalSelect(); renderConsequenceSelect(); renderChildPicker('activityChildren'); }
     }
 
     function startEditReward(id) {
@@ -3169,16 +3243,16 @@
 
     function editItem(type, id) {
       closeModal();
-      ({ goal: startEditGoal, consequence: startEditConsequence, reward: startEditReward, challenge: startEditChallenge })[type](id);
+      ({ goal: startEditGoal, consequence: startEditConsequence, reward: startEditReward, challenge: startEditChallenge, activity: startEditActivity })[type](id);
     }
 
     function modalApproveGoal(id) { closeModal(); approveGoal(id); }
     function modalResolve(id) { closeModal(); resolveConsequence(id); }
     function modalRedeem(id) { closeModal(); claimReward(id); }
 
-    const TYPE_LABELS = { goal: 'Goal', consequence: 'Consequence', reward: 'Reward', challenge: 'Challenge' };
+    const TYPE_LABELS = { goal: 'Goal', consequence: 'Consequence', reward: 'Reward', challenge: 'Challenge', activity: 'Activity' };
 
-    function openCalendarItem(type, id) {
+    function openCalendarItem(type, id, date) {
       const isParent = session.role === 'parent';
       let title = '';
       let body = '';
@@ -3229,6 +3303,20 @@
           body += kv('Your points', String(kid ? kid.points : 0));
           if (canClaim) actions += `<button class="btn" type="button" onclick="modalRedeem('${id}')">Redeem</button>`;
         }
+      } else if (type === 'activity') {
+        const a = (family.activities || []).find((x) => x.id === id);
+        if (!a) return;
+        title = a.title;
+        body = kv('For', isParent ? childName(a.child_id) : '')
+          + kv('Date', date ? prettyDate(date) : activitySchedule(a))
+          + kv('Repeats', (a.recurring_days || []).length ? activitySchedule(a) : '')
+          + kv('Time', timeRange(a))
+          + kv('Leave by', fmtTime(a.leave_time))
+          + kv('Details', a.details);
+        if (isParent) {
+          actions += `<button class="btn secondary" type="button" onclick="editItem('activity', '${id}')">Edit</button>`;
+          actions += `<button class="btn danger" type="button" onclick="modalDeleteActivity('${id}')">Delete</button>`;
+        }
       } else if (type === 'challenge') {
         const c = family.challenges.find((x) => x.id === id);
         if (!c) return;
@@ -3247,7 +3335,7 @@
     // ---------- calendar ----------
     let calMonth = { y: new Date().getFullYear(), m: new Date().getMonth() };
     let calSelected = null;
-    const calFilter = { goal: true, consequence: true, reward: true, challenge: false };
+    const calFilter = { goal: true, consequence: true, reward: true, activity: true, challenge: false };
 
     function calGridRange() {
       const first = fmtDate(new Date(calMonth.y, calMonth.m, 1));
@@ -3301,6 +3389,15 @@
           });
         });
       }
+      if (calFilter.activity) {
+        (family.activities || []).filter(mine).forEach((a) => {
+          dates.forEach((d) => {
+            if (activityOccursOn(a, d)) {
+              events.push({ date: d, type: 'activity', id: a.id, title: who(a.child_id) + (a.start_time ? fmtTime(a.start_time) + ' ' : '') + a.title });
+            }
+          });
+        });
+      }
       return events;
     }
 
@@ -3323,7 +3420,7 @@
           <div class="cal-cell${other ? ' other' : ''}${d === today ? ' today' : ''}${d === calSelected ? ' selected' : ''}" data-cal-date="${d}">
             <div class="cal-num">${Number(d.slice(8))}</div>
             <div class="cal-chips">
-              ${items.slice(0, 3).map((e) => `<span class="cal-chip t-${e.type}${e.future ? ' future' : ''}${e.cont ? ' cont' : ''}" data-cal-item="${e.type}:${e.id}" title="${esc(e.title)}">${esc(e.title)}</span>`).join('')}
+              ${items.slice(0, 3).map((e) => `<span class="cal-chip t-${e.type}${e.future ? ' future' : ''}${e.cont ? ' cont' : ''}" data-cal-item="${e.type}:${e.id}:${e.date}" title="${esc(e.title)}">${esc(e.title)}</span>`).join('')}
               ${items.length > 3 ? `<span class="cal-more">+${items.length - 3} more</span>` : ''}
             </div>
           </div>
@@ -3335,7 +3432,7 @@
       $('#calDay').innerHTML = `<h3 style="margin:8px 0 0">${prettyDate(calSelected)}</h3>`
         + (dayItems.length
           ? dayItems.map((e) => `
-              <article class="row-item clickable" data-cal-item="${e.type}:${e.id}">
+              <article class="row-item clickable" data-cal-item="${e.type}:${e.id}:${e.date}">
                 <div class="row-main">
                   <div class="row-title">${esc(e.title)}</div>
                   <div class="row-meta">${TYPE_LABELS[e.type]}${e.future ? ' · upcoming' : ''}${e.cont ? ' · ongoing' : ''}</div>
@@ -3351,6 +3448,172 @@
       calSelected = todayStr().slice(0, 7) === fmtDate(d).slice(0, 7) ? todayStr() : fmtDate(d);
       renderCalendar();
     }
+
+    // ---------- activities ----------
+    function fmtTime(t) {
+      return t ? String(t).slice(0, 5) : '';
+    }
+
+    function timeRange(a) {
+      const start = fmtTime(a.start_time);
+      const end = fmtTime(a.end_time);
+      if (start && end) return start + ' to ' + end;
+      if (start) return 'from ' + start;
+      if (end) return 'until ' + end;
+      return '';
+    }
+
+    function activityOccursOn(a, date) {
+      const days = a.recurring_days || [];
+      if (!days.length) return a.activity_date === date;
+      return date >= a.activity_date && (!a.repeat_until || date <= a.repeat_until) && days.includes(weekdayOf(date));
+    }
+
+    function activitySchedule(a) {
+      const days = a.recurring_days || [];
+      if (!days.length) return prettyDate(a.activity_date);
+      const order = [1, 2, 3, 4, 5, 6, 0];
+      const names = order.filter((d) => days.includes(d)).map((d) => DAY_NAMES[d]).join(', ');
+      return 'Every ' + names + ' from ' + prettyDate(a.activity_date) + (a.repeat_until ? ' until ' + prettyDate(a.repeat_until) : '');
+    }
+
+    function updateActivityUI() {
+      const repeating = $$('#activityDays input:checked').length > 0;
+      $('#activityUntilWrap').classList.toggle('hidden', !repeating);
+    }
+
+    function renderActivities() {
+      const isParent = session.role === 'parent';
+      const child = activeChild();
+      const mine = (a) => isParent || a.child_id === child.id;
+      const all = (family.activities || []).filter(mine);
+      $('#activitiesSection').classList.toggle('hidden', !isParent && !all.length);
+
+      // The next 7 days
+      const today = todayStr();
+      const days = [];
+      for (let i = 0; i < 7; i++) {
+        const date = addDays(today, i);
+        const items = all.filter((a) => activityOccursOn(a, date))
+          .sort((x, y) => (x.start_time || '').localeCompare(y.start_time || ''));
+        if (items.length) days.push({ date, items });
+      }
+      const dayName = (date) => (date === today ? 'Today' : date === addDays(today, 1) ? 'Tomorrow' : '') + (date === today || date === addDays(today, 1) ? ', ' : '') + prettyDate(date);
+
+      $('#activityUpcoming').innerHTML = days.length
+        ? days.map(({ date, items }) => `
+            <section class="list">
+              <h3 style="margin:6px 0 0;font-size:16px">${esc(dayName(date))}</h3>
+              ${items.map((a) => `
+                <article class="row-item clickable" onclick="openCalendarItem('activity', '${a.id}', '${date}')">
+                  <div class="row-main">
+                    <div class="row-title">${a.start_time ? esc(fmtTime(a.start_time)) + ' ' : ''}${esc(a.title)}</div>
+                    <div class="row-meta">${[isParent ? esc(childName(a.child_id)) : '', timeRange(a) && a.start_time ? esc(timeRange(a)) : '', esc(a.details || '')].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  ${a.leave_time ? `<span class="pill amber">Leave ${esc(fmtTime(a.leave_time))}</span>` : ''}
+                </article>`).join('')}
+            </section>`).join('')
+        : '<div class="empty">Nothing in the next 7 days.</div>';
+
+      // Everything, for managing
+      $('#activityAllSummary').textContent = 'All activities (' + all.length + ')';
+      $('#activityList').innerHTML = all.length
+        ? all.map((a) => `
+            <article class="row-item">
+              <div class="row-main">
+                <div class="row-title">${esc(a.title)}</div>
+                <div class="row-meta">${[isParent ? esc(childName(a.child_id)) : '', esc(activitySchedule(a)), esc(timeRange(a)), a.leave_time ? 'leave by ' + esc(fmtTime(a.leave_time)) : ''].filter(Boolean).join(' · ')}</div>
+              </div>
+              ${isParent ? `<div class="row-actions"><button class="btn secondary small" type="button" onclick="startEditActivity('${a.id}')">Edit</button><button class="btn secondary small" type="button" onclick="deleteActivity('${a.id}')">Delete</button></div>` : ''}
+            </article>`).join('')
+        : '<div class="empty">No activities yet.</div>';
+    }
+
+    async function addActivity(event) {
+      event.preventDefault();
+      setMessage('#activityError', '');
+      const childIds = $$('#activityChildren input[data-child]:checked').map((box) => box.value);
+      if (!childIds.length) {
+        setMessage('#activityError', 'Pick at least one child.');
+        return;
+      }
+      const days = $$('#activityDays input:checked').map((box) => Number(box.value));
+      const start = $('#activityStart').value;
+      const end = $('#activityEnd').value;
+      const leave = $('#activityLeave').value;
+      if (start && end && end <= start) {
+        setMessage('#activityError', 'The finish time must be after the start time.');
+        return;
+      }
+      if (start && leave && leave > start) {
+        setMessage('#activityError', '"Leave by" should be at or before the start time.');
+        return;
+      }
+      const fields = {
+        title: $('#activityTitle').value.trim(),
+        details: $('#activityDetails').value.trim() || null,
+        activity_date: $('#activityDate').value,
+        recurring_days: days,
+        repeat_until: days.length && $('#activityUntil').value ? $('#activityUntil').value : null,
+        start_time: start || null,
+        end_time: end || null,
+        leave_time: leave || null
+      };
+
+      if (editing?.type === 'activity') {
+        if (childIds.length !== 1) {
+          setMessage('#activityError', 'Pick exactly one child when editing.');
+          return;
+        }
+        const res = await db.from('activities').update({ ...fields, child_id: childIds[0] }).eq('id', editing.id);
+        if (!check(res)) return;
+        cancelEdit();
+        await refreshAndRender();
+        return;
+      }
+
+      const { error } = await db.from('activities').insert(childIds.map((id) => ({ family_id: family.id, child_id: id, ...fields })));
+      if (error) {
+        setMessage('#activityError', error.message);
+        return;
+      }
+      event.target.reset();
+      $('#activityDate').value = todayStr();
+      updateActivityUI();
+      closeForm('activityForm');
+      await refreshAndRender();
+    }
+
+    function startEditActivity(id) {
+      const a = (family.activities || []).find((x) => x.id === id);
+      if (!a) return;
+      cancelEdit();
+      editing = { type: 'activity', id };
+      $('#activityTitle').value = a.title;
+      $('#activityDate').value = a.activity_date;
+      $('#activityStart').value = fmtTime(a.start_time);
+      $('#activityEnd').value = fmtTime(a.end_time);
+      $('#activityLeave').value = fmtTime(a.leave_time);
+      $('#activityDetails').value = a.details || '';
+      $('#activityUntil').value = a.repeat_until || '';
+      setPicker('activityChildren', [a.child_id]);
+      setDays('activityDays', a.recurring_days || []);
+      updateActivityUI();
+      $('#activityFormTitle').textContent = 'Edit activity';
+      $('#activitySubmit').textContent = 'Save changes';
+      $('#activityCancel').classList.remove('hidden');
+      openForm('activityForm');
+    }
+
+    async function deleteActivity(id) {
+      if (session.role !== 'parent') return;
+      if (!confirm('Delete this activity? If it repeats, every day it appears on will be removed.')) return;
+      const res = await db.from('activities').delete().eq('id', id);
+      if (!check(res)) return;
+      await refreshAndRender();
+    }
+
+    function modalDeleteActivity(id) { closeModal(); deleteActivity(id); }
 
     // ---------- feedback notes ----------
     const NOTE_LABELS = { praise: 'Well done', note: 'Note', reminder: 'Reminder' };
@@ -3508,6 +3771,15 @@
             <span class="pill ${e.amount > 0 ? 'green' : 'amber'}">${e.amount > 0 ? '+' : ''}${e.amount}</span>
           </article>`).join('');
 
+      const activityRows = (family.activities || []).filter((a) => a.child_id === childId).map((a) => `
+          <article class="row-item">
+            <div class="row-main">
+              <div class="row-title">${esc(a.title)}</div>
+              <div class="row-meta">${esc(activitySchedule(a))}${timeRange(a) ? ' · ' + esc(timeRange(a)) : ''}</div>
+            </div>
+            <button class="btn secondary small" type="button" onclick="editItem('activity', '${a.id}')">Edit</button>
+          </article>`).join('');
+
       const noteRows = (family.notes || []).filter((n) => n.child_id === childId).slice(0, 5).map((n) => `
           <article class="row-item">
             <div class="row-main">
@@ -3526,6 +3798,7 @@
         ${section('Goals', goalRows, 'No open goals.')}
         ${section('Optional challenges', challengeRows, 'No challenges.')}
         ${section('Consequences', consequenceRows, 'No active consequences.')}
+        ${section('Activities', activityRows, 'No activities.')}
         ${section('Feedback sent', noteRows, 'No feedback sent yet.')}
         ${section('Recent points activity', historyRows, 'No activity yet.')}
       `;
@@ -3699,6 +3972,9 @@
     $('#rewardForm').addEventListener('submit', addReward);
     $('#consequenceForm').addEventListener('submit', addConsequence);
     $('#feedbackForm').addEventListener('submit', addFeedback);
+    $('#activityForm').addEventListener('submit', addActivity);
+    $('#activityCancel').addEventListener('click', cancelEdit);
+    $('#activityDays').addEventListener('change', updateActivityUI);
     $('#rewardCancel').addEventListener('click', cancelEdit);
     $('#consequenceCancel').addEventListener('click', cancelEdit);
     $('#saveFamilyNameBtn').addEventListener('click', renameFamily);
@@ -3713,7 +3989,7 @@
     $('#consequenceChoice').addEventListener('change', updateConsequenceUI);
     updateConsequenceUI();
     updateGoalConsequenceUI();
-    ['challengeChildren', 'goalChildren', 'consequenceChildren', 'feedbackChildren'].forEach((id) => {
+    ['challengeChildren', 'goalChildren', 'consequenceChildren', 'feedbackChildren', 'activityChildren'].forEach((id) => {
       $('#' + id).addEventListener('change', (e) => {
         const kids = $$('#' + id + ' input[data-child]');
         if (e.target.matches('[data-all]')) {
@@ -3727,6 +4003,7 @@
 
     $('#goalDueDate').value = nextDate(7);
     $('#rewardUntil').value = nextDate(14);
+    $('#activityDate').value = todayStr();
 
     $('#summaryThis').addEventListener('click', () => { summaryWeek = 'this'; renderSummary(); });
     $('#summaryLast').addEventListener('click', () => { summaryWeek = 'last'; renderSummary(); });
@@ -3746,8 +4023,8 @@
     $('#calendarSection').addEventListener('click', (e) => {
       const item = e.target.closest('[data-cal-item]');
       if (item) {
-        const [type, id] = item.dataset.calItem.split(':');
-        openCalendarItem(type, id);
+        const [type, id, date] = item.dataset.calItem.split(':');
+        openCalendarItem(type, id, date);
         return;
       }
       const cell = e.target.closest('[data-cal-date]');
