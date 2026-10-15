@@ -562,6 +562,8 @@
     .t-challenge { background: #7c5cff; }
     .t-activity { background: #0e9aa7; }
     .cal-more { font-size: 11px; color: var(--muted); font-weight: 700; }
+    .cal-dots { display: none; flex-wrap: wrap; gap: 3px; justify-content: center; pointer-events: none; }
+    .cal-dot { min-width: 17px; height: 17px; padding: 0 3px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; line-height: 1; }
     .row-item.clickable { cursor: pointer; }
     .row-item.clickable:hover { background: var(--hover-row); }
     .progress.mini { height: 8px; margin-top: 6px; }
@@ -578,11 +580,9 @@
     .nav-badge { position: absolute; top: 0; left: calc(50% + 4px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--red); color: #fff; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; }
 
     @media (max-width: 700px) {
-      .cal-cell { min-height: 54px; align-items: center; }
-      .cal-chips { flex-direction: row; flex-wrap: wrap; gap: 3px; justify-content: center; }
-      .cal-chip { width: 8px; height: 8px; padding: 0; font-size: 0; border-radius: 50%; pointer-events: none; }
-      .cal-chip.cont { border-radius: 50%; }
-      .cal-more { display: none; }
+      .cal-cell { min-height: 58px; align-items: center; }
+      .cal-chips { display: none; }
+      .cal-dots { display: flex; }
     }
 
     .note-card { border-left: 5px solid var(--blue); padding: 14px; gap: 8px; }
@@ -3181,6 +3181,7 @@
       // colour the phone's browser bar to match
       const meta = document.querySelector('meta[name="theme-color"]');
       if (meta) meta.setAttribute('content', getComputedStyle(document.documentElement).getPropertyValue('--sidebar-bg').trim() || '#101828');
+      if (session && family && $('#calGrid')) renderCalendar();
       $$('[data-theme-choice]').forEach((button) => {
         const active = button.dataset.themeChoice === choice;
         button.classList.toggle('active', active);
@@ -3402,6 +3403,32 @@
       return events;
     }
 
+    // One circle per kind of item on a day, with how many there are inside it
+    function calDots(items) {
+      const counts = {};
+      items.forEach((e) => { counts[e.type] = (counts[e.type] || 0) + 1; });
+      return ['goal', 'consequence', 'activity', 'reward', 'challenge']
+        .filter((type) => counts[type])
+        .map((type) => `<span class="cal-dot t-${type}" title="${counts[type]} ${TYPE_LABELS[type].toLowerCase()}${counts[type] === 1 ? '' : 's'}">${counts[type]}</span>`)
+        .join('');
+    }
+
+    // Black or white number, whichever reads better on that circle's colour (works in every theme)
+    function pickTextColor(rgb) {
+      const m = String(rgb).match(/\d+(\.\d+)?/g);
+      if (!m) return '#fff';
+      const [r, g, b] = m.slice(0, 3).map(Number).map((v) => {
+        v /= 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      });
+      const L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      return 1.05 / (L + 0.05) >= (L + 0.05) / 0.05 ? '#fff' : '#000';
+    }
+
+    function applyDotContrast() {
+      $$('.cal-dot').forEach((dot) => { dot.style.color = pickTextColor(getComputedStyle(dot).backgroundColor); });
+    }
+
     function renderCalendar() {
       if (!calSelected) calSelected = todayStr();
       const { start, end, first } = calGridRange();
@@ -3420,6 +3447,7 @@
         html += `
           <div class="cal-cell${other ? ' other' : ''}${d === today ? ' today' : ''}${d === calSelected ? ' selected' : ''}" data-cal-date="${d}">
             <div class="cal-num">${Number(d.slice(8))}</div>
+            <div class="cal-dots">${calDots(items)}</div>
             <div class="cal-chips">
               ${items.slice(0, 3).map((e) => `<span class="cal-chip t-${e.type}${e.future ? ' future' : ''}${e.cont ? ' cont' : ''}" data-cal-item="${e.type}:${e.id}:${e.date}" title="${esc(e.title)}">${esc(e.title)}</span>`).join('')}
               ${items.length > 3 ? `<span class="cal-more">+${items.length - 3} more</span>` : ''}
@@ -3428,6 +3456,7 @@
         `;
       }
       $('#calGrid').innerHTML = html;
+      applyDotContrast();
 
       const dayItems = byDate[calSelected] || [];
       $('#calDay').innerHTML = `<h3 style="margin:8px 0 0">${prettyDate(calSelected)}</h3>`
