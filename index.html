@@ -555,6 +555,7 @@
     .cal-chips { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
     .cal-chip { font-size: 11px; font-weight: 700; padding: 2px 5px; border-radius: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; cursor: pointer; }
     .cal-chip.future { opacity: 0.6; }
+    .cal-chip.skipped { opacity: 0.45; text-decoration: line-through; }
     .cal-chip.cont { border-radius: 0; }
     .t-goal { background: var(--blue); }
     .t-consequence { background: var(--red); }
@@ -864,6 +865,9 @@
                 <label><input type="checkbox" value="6" /> Sat</label>
                 <label><input type="checkbox" value="0" /> Sun</label>
               </div>
+            </div>
+            <div class="field hidden" id="goalSkipBox">Skipped days
+              <div id="goalSkipList" class="list"></div>
             </div>
             <label>Consequence
               <select id="goalConsequenceChoice">
@@ -1285,13 +1289,12 @@
     }
 
     // First date on/after today that falls on one of the selected weekdays
-    function firstOccurrence(days) {
-      for (let i = 0; i <= 7; i++) {
+    function firstOccurrence(days, skips = []) {
+      for (let i = 0; i <= 60; i++) {
         const d = new Date();
         d.setDate(d.getDate() + i);
-        if (days.includes(d.getDay())) {
-          return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-        }
+        const str = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        if (days.includes(d.getDay()) && !skips.includes(str)) return str;
       }
       return todayStr();
     }
@@ -1483,14 +1486,25 @@
     }
 
     // Next selected weekday after a given date; if that has already passed, today onwards
-    function nextRecurringDate(days, afterDate) {
-      for (let i = 1; i <= 7; i++) {
-        const candidate = addDays(afterDate, i);
-        if (days.includes(weekdayOf(candidate))) {
-          return candidate < todayStr() ? firstOccurrence(days) : candidate;
+    // Next selected weekday after a given date, passing over skipped days.
+    // If that has already passed, start from today instead.
+    function nextRecurringDate(days, afterDate, skips = []) {
+      let cursor = afterDate;
+      for (let step = 0; step < 60; step++) {
+        let next = null;
+        for (let i = 1; i <= 7; i++) {
+          const candidate = addDays(cursor, i);
+          if (days.includes(weekdayOf(candidate))) { next = candidate; break; }
         }
+        if (!next) break;
+        if (!skips.includes(next)) return next < todayStr() ? firstOccurrence(days, skips) : next;
+        cursor = next;
       }
-      return firstOccurrence(days);
+      return firstOccurrence(days, skips);
+    }
+
+    function isSkippedOn(item, date) {
+      return (item.skip_dates || []).includes(date);
     }
 
     function prettyDate(dateStr) {
@@ -2004,6 +2018,7 @@
       $('#rewardUntil').value = nextDate(14);
       $('#challengeFormTitle').textContent = 'Add challenge';
       $('#goalFormTitle').textContent = 'Add goal';
+      $('#goalSkipBox').classList.add('hidden');
       $('#rewardFormTitle').textContent = 'Add reward';
       $('#consequenceFormTitle').textContent = 'Add consequence';
       $('#activityFormTitle').textContent = 'Add activity';
@@ -2096,6 +2111,7 @@
       setDays('goalDays', g.recurring_days || []);
       updateGoalDueState();
       $('#goalFormTitle').textContent = 'Edit goal';
+      renderGoalSkipList(g);
       $('#goalSubmit').textContent = 'Save changes';
       $('#goalCancel').classList.remove('hidden');
       openForm('goalForm');
@@ -2144,7 +2160,7 @@
 
       const isRecurring = (c) => (c.recurring_days || []).length > 0;
       const doneToday = (c) => c.last_completed_date === today;
-      const dueToday = (c) => !isRecurring(c) || c.recurring_days.includes(dow);
+      const dueToday = (c) => !isRecurring(c) || (c.recurring_days.includes(dow) && !isSkippedOn(c, today));
 
       const challenges = isParent
         ? family.challenges
@@ -2167,10 +2183,17 @@
           challenge.details || ''
         ].filter(Boolean).map(esc).join(' · ');
 
+        const skippedToday = isRecurring(challenge) && isSkippedOn(challenge, today);
+        const skipBtn = isRecurring(challenge) && challenge.recurring_days.includes(dow)
+          ? `<button class="btn ghost small" type="button" onclick="setOccurrenceSkipped('challenge', '${challenge.id}', '${today}', ${!skippedToday})">${skippedToday ? 'Restore today' : 'Skip today'}</button>`
+          : '';
         const actions = isParent
-          ? (doneToday(challenge)
-              ? '<span class="pill green">Done today</span>'
-              : approveIconBtn(`approveChallenge('${challenge.id}')`))
+          ? (skippedToday
+              ? '<span class="pill">Skipped today</span>'
+              : doneToday(challenge)
+                ? '<span class="pill green">Done today</span>'
+                : approveIconBtn(`approveChallenge('${challenge.id}')`))
+            + skipBtn
             + `<button class="btn secondary small" type="button" onclick="startEditChallenge('${challenge.id}')">Edit</button>`
             + `<button class="btn danger small" type="button" onclick="deleteChallenge('${challenge.id}')">Delete</button>`
           : (waitingRequest
@@ -2247,7 +2270,8 @@
         let boxes = '';
         if (isParent) {
           if (goal.status === 'waiting') { const d = goalDecision(goal, 'g'); actions += d.buttons; boxes += d.boxes; }
-          if (overdue) actions += `<button class="btn danger small" type="button" onclick="applyConsequence('${goal.id}')">Apply consequence</button>`;
+          if (overdue) actions += `<button class="btn danger small" type="button" onclick="applyConsequence('${goal.id}')">Apply consequence</button><button class="btn ghost small" type="button" onclick="ignoreConsequence('${goal.id}')">Ignore consequence</button>`;
+          if (goal.status === 'active' && (goal.recurring_days || []).length) actions += `<button class="btn ghost small" type="button" title="Skip this one and move to the next" onclick="setOccurrenceSkipped('goal', '${goal.id}', '${goal.due_date}', true)">Skip this one</button>`;
           actions += `<button class="btn secondary small" type="button" onclick="startEditGoal('${goal.id}')">Edit</button>`;
           actions += `<button class="btn secondary small" type="button" onclick="deleteGoal('${goal.id}')">Delete</button>`;
         } else if (goal.status === 'active' && !upcoming) {
@@ -2409,6 +2433,7 @@
           </div>
           <div class="row">
             ${isParent && goal.status !== 'consequence' ? `<button class="btn danger" type="button" onclick="applyConsequence('${goal.id}')">Apply consequence</button>` : ''}
+            ${isParent && goal.status === 'active' ? `<button class="btn ghost" type="button" onclick="ignoreConsequence('${goal.id}')">Ignore consequence</button>` : ''}
             ${isParent && goal.status === 'consequence' ? `<button class="btn success" type="button" onclick="clearConsequence('${goal.id}')">Mark resolved</button>` : ''}
           </div>
         </article>
@@ -2955,12 +2980,58 @@
     }
 
     // Recurring goals go back to active with the next due date; one-time goals are completed
+    function renderGoalSkipList(goal) {
+      const dates = [...(goal.skip_dates || [])].sort();
+      $('#goalSkipBox').classList.toggle('hidden', !dates.length);
+      $('#goalSkipList').innerHTML = dates.map((d) => `
+        <div class="row-item">
+          <div class="row-main">
+            <div class="row-title">${prettyDate(d)}</div>
+            <div class="row-meta">${d < todayStr() ? 'Already passed' : 'Skipped'}</div>
+          </div>
+          <button class="btn ghost small" type="button" onclick="restoreSkippedDate('${goal.id}', '${d}')">Restore</button>
+        </div>`).join('');
+    }
+
+    // Put a skipped day back. If the goal has already moved past it, the goal goes back to that day.
+    async function restoreSkippedDate(goalId, date) {
+      if (session.role !== 'parent') return;
+      const goal = family.goals.find((g) => g.id === goalId);
+      if (!goal) return;
+      const movesBack = goal.status === 'active' && date < goal.due_date;
+      if (movesBack && date < todayStr() && !confirm('That day has already passed, so the goal will be overdue again. Restore it anyway?')) return;
+      const update = { skip_dates: (goal.skip_dates || []).filter((d) => d !== date) };
+      if (movesBack) update.due_date = date;
+      const res = await db.from('goals').update(update).eq('id', goalId);
+      if (!check(res)) return;
+      await refreshAndRender();
+      const fresh = family.goals.find((g) => g.id === goalId);
+      if (fresh && editing?.type === 'goal' && editing.id === goalId) {
+        $('#goalDueDate').value = fresh.due_date;
+        renderGoalSkipList(fresh);
+      }
+    }
+
+    // Waive the consequence for an overdue goal: it moves on without one
+    async function ignoreConsequence(goalId) {
+      if (session.role !== 'parent') return;
+      const goal = family.goals.find((g) => g.id === goalId);
+      if (!goal) return;
+      const repeats = (goal.recurring_days || []).length > 0;
+      const message = repeats
+        ? 'Ignore the consequence for "' + goal.name + '"? The goal moves on to its next day with no consequence.'
+        : 'Ignore the consequence for "' + goal.name + '"? The goal will be closed with no consequence.';
+      if (!confirm(message)) return;
+      await resetOrComplete(goalId);
+      await refreshAndRender();
+    }
+
     async function resetOrComplete(goalId) {
       const goal = family.goals.find((item) => item.id === goalId);
       if (!goal) return;
       const days = goal.recurring_days || [];
       if (days.length > 0) {
-        await db.from('goals').update({ status: 'active', due_date: nextRecurringDate(days, goal.due_date) }).eq('id', goalId);
+        await db.from('goals').update({ status: 'active', due_date: nextRecurringDate(days, goal.due_date, goal.skip_dates || []) }).eq('id', goalId);
       } else {
         await db.from('goals').update({ status: 'completed' }).eq('id', goalId);
       }
@@ -2969,7 +3040,7 @@
     function goalApprovalOutcome(goal) {
       const days = goal.recurring_days || [];
       return days.length
-        ? { status: 'active', due: nextRecurringDate(days, goal.due_date) }
+        ? { status: 'active', due: nextRecurringDate(days, goal.due_date, goal.skip_dates || []) }
         : { status: 'completed', due: null };
     }
 
@@ -3248,6 +3319,51 @@
       ({ goal: startEditGoal, consequence: startEditConsequence, reward: startEditReward, challenge: startEditChallenge, activity: startEditActivity })[type](id);
     }
 
+    // "Skip this day" / "Restore this day" for one occurrence of a repeating item
+    function skipButton(type, item, date) {
+      if (!date || !(item.recurring_days || []).length) return '';
+      const skipped = isSkippedOn(item, date);
+      if (type === 'goal' && date < item.due_date) return '';           // goal days already passed
+      if (skipped) {
+        if (type === 'goal' && date <= item.due_date) return '';        // the goal has already moved on
+        return `<button class="btn ghost" type="button" onclick="skipFromModal('${type}', '${item.id}', '${date}', false)">Restore this day</button>`;
+      }
+      return `<button class="btn ghost-danger" type="button" onclick="skipFromModal('${type}', '${item.id}', '${date}', true)">Skip this day</button>`;
+    }
+
+    function skipFromModal(type, id, date, skip) {
+      closeModal();
+      setOccurrenceSkipped(type, id, date, skip);
+    }
+
+    async function setOccurrenceSkipped(type, id, date, skip) {
+      if (session.role !== 'parent') return;
+      const table = { goal: 'goals', challenge: 'challenges', activity: 'activities' }[type];
+      const list = { goal: family.goals, challenge: family.challenges, activity: family.activities || [] }[type];
+      const item = list.find((x) => x.id === id);
+      if (!item) return;
+      const skips = new Set(item.skip_dates || []);
+      const update = {};
+      if (skip) {
+        if (type === 'goal' && date === item.due_date) {
+          if (item.status !== 'active') {
+            alert('This goal is waiting for approval or has a consequence, so it cannot be skipped right now.');
+            return;
+          }
+        }
+        skips.add(date);
+        if (type === 'goal' && date === item.due_date) {
+          update.due_date = nextRecurringDate(item.recurring_days || [], item.due_date, [...skips]);
+        }
+      } else {
+        skips.delete(date);
+      }
+      update.skip_dates = [...skips].sort();
+      const res = await db.from(table).update(update).eq('id', id);
+      if (!check(res)) return;
+      await refreshAndRender();
+    }
+
     function modalApproveGoal(id) { closeModal(); approveGoal(id); }
     function modalResolve(id) { closeModal(); resolveConsequence(id); }
     function modalRedeem(id) { closeModal(); claimReward(id); }
@@ -3271,11 +3387,17 @@
           + kv('Time', d.label)
           + kv('Repeats', (g.recurring_days || []).length ? [...g.recurring_days].sort().map((n) => DAY_NAMES[n]).join(', ') : '')
           + kv('If missed', (g.consequence || '') + (g.consequence_days ? ' (for ' + g.consequence_days + (g.consequence_days === 1 ? ' day)' : ' days)') : ''))
+          + kv('This day', date && isSkippedOn(g, date) ? 'Skipped' : '')
           + kv('Details', g.details)
           + `<div class="progress ${d.tone}" style="margin-top:12px"><span style="width:${d.fill}%"></span></div>`;
         if (isParent) {
           if (g.status === 'waiting') actions += approveIconBtn(`modalApproveGoal('${id}')`);
           actions += `<button class="btn secondary" type="button" onclick="editItem('goal', '${id}')">Edit</button>`;
+          actions += skipButton('goal', g, date);
+          if (g.status === 'active' && g.due_date < todayStr()) {
+            actions += `<button class="btn danger" type="button" onclick="closeModal(); applyConsequence('${id}')">Apply consequence</button>`;
+            actions += `<button class="btn ghost" type="button" onclick="closeModal(); ignoreConsequence('${id}')">Ignore consequence</button>`;
+          }
         }
       } else if (type === 'consequence') {
         const c = family.consequences.find((x) => x.id === id);
@@ -3314,10 +3436,12 @@
           + kv('Repeats', (a.recurring_days || []).length ? activitySchedule(a) : '')
           + kv('Time', timeRange(a))
           + kv('Leave by', fmtTime(a.leave_time))
+          + kv('This day', date && isSkippedOn(a, date) ? 'Skipped' : '')
           + kv('Details', a.details);
         if (isParent) {
           actions += `<button class="btn secondary" type="button" onclick="editItem('activity', '${id}')">Edit</button>`;
           actions += `<button class="btn danger" type="button" onclick="modalDeleteActivity('${id}')">Delete</button>`;
+          actions += skipButton('activity', a, date);
         }
       } else if (type === 'challenge') {
         const c = family.challenges.find((x) => x.id === id);
@@ -3326,8 +3450,12 @@
         body = kv('For', isParent ? childName(c.child_id) : '')
           + kv('Points', c.points + ' points')
           + kv('Repeats', (c.recurring_days || []).length ? [...c.recurring_days].sort().map((n) => DAY_NAMES[n]).join(', ') : 'One-off')
+          + kv('This day', date && isSkippedOn(c, date) ? 'Skipped' : '')
           + kv('Details', c.details);
-        if (isParent) actions += `<button class="btn secondary" type="button" onclick="editItem('challenge', '${id}')">Edit</button>`;
+        if (isParent) {
+          actions += `<button class="btn secondary" type="button" onclick="editItem('challenge', '${id}')">Edit</button>`;
+          actions += skipButton('challenge', c, date);
+        }
       } else {
         return;
       }
@@ -3360,10 +3488,11 @@
         family.goals.filter(mine).forEach((g) => {
           if (g.status === 'completed') return;
           const days = g.recurring_days || [];
+          (g.skip_dates || []).forEach((d) => { if (d >= start && d <= end) events.push({ date: d, type: 'goal', id: g.id, title: who(g.child_id) + g.name, skipped: true }); });
           if (g.due_date >= start && g.due_date <= end) events.push({ date: g.due_date, type: 'goal', id: g.id, title: who(g.child_id) + g.name });
           if (days.length) {
             dates.forEach((d) => {
-              if (d > g.due_date && days.includes(weekdayOf(d))) events.push({ date: d, type: 'goal', id: g.id, title: who(g.child_id) + g.name, future: true });
+              if (d > g.due_date && days.includes(weekdayOf(d)) && !isSkippedOn(g, d)) events.push({ date: d, type: 'goal', id: g.id, title: who(g.child_id) + g.name, future: true });
             });
           }
         });
@@ -3387,7 +3516,7 @@
           if (!days.length) return;
           const created = c.created_at ? fmtDate(new Date(c.created_at)) : start;
           dates.forEach((d) => {
-            if (d >= created && days.includes(weekdayOf(d))) events.push({ date: d, type: 'challenge', id: c.id, title: who(c.child_id) + c.name });
+            if (d >= created && days.includes(weekdayOf(d))) events.push({ date: d, type: 'challenge', id: c.id, title: who(c.child_id) + c.name, skipped: isSkippedOn(c, d) });
           });
         });
       }
@@ -3395,7 +3524,7 @@
         (family.activities || []).filter(mine).forEach((a) => {
           dates.forEach((d) => {
             if (activityOccursOn(a, d)) {
-              events.push({ date: d, type: 'activity', id: a.id, title: who(a.child_id) + (a.start_time ? fmtTime(a.start_time) + ' ' : '') + a.title });
+              events.push({ date: d, type: 'activity', id: a.id, title: who(a.child_id) + (a.start_time ? fmtTime(a.start_time) + ' ' : '') + a.title, skipped: isSkippedOn(a, d) });
             }
           });
         });
@@ -3406,7 +3535,7 @@
     // One circle per kind of item on a day, with how many there are inside it
     function calDots(items) {
       const counts = {};
-      items.forEach((e) => { counts[e.type] = (counts[e.type] || 0) + 1; });
+      items.filter((e) => !e.skipped).forEach((e) => { counts[e.type] = (counts[e.type] || 0) + 1; });
       return ['goal', 'consequence', 'activity', 'reward', 'challenge']
         .filter((type) => counts[type])
         .map((type) => `<span class="cal-dot t-${type}" title="${counts[type]} ${TYPE_LABELS[type].toLowerCase()}${counts[type] === 1 ? '' : 's'}">${counts[type]}</span>`)
@@ -3449,7 +3578,7 @@
             <div class="cal-num">${Number(d.slice(8))}</div>
             <div class="cal-dots">${calDots(items)}</div>
             <div class="cal-chips">
-              ${items.slice(0, 3).map((e) => `<span class="cal-chip t-${e.type}${e.future ? ' future' : ''}${e.cont ? ' cont' : ''}" data-cal-item="${e.type}:${e.id}:${e.date}" title="${esc(e.title)}">${esc(e.title)}</span>`).join('')}
+              ${items.slice(0, 3).map((e) => `<span class="cal-chip t-${e.type}${e.future ? ' future' : ''}${e.cont ? ' cont' : ''}${e.skipped ? ' skipped' : ''}" data-cal-item="${e.type}:${e.id}:${e.date}" title="${esc(e.title)}">${esc(e.title)}</span>`).join('')}
               ${items.length > 3 ? `<span class="cal-more">+${items.length - 3} more</span>` : ''}
             </div>
           </div>
@@ -3462,12 +3591,12 @@
       $('#calDay').innerHTML = `<h3 style="margin:8px 0 0">${prettyDate(calSelected)}</h3>`
         + (dayItems.length
           ? dayItems.map((e) => `
-              <article class="row-item clickable" data-cal-item="${e.type}:${e.id}:${e.date}">
+              <article class="row-item clickable"${e.skipped ? ' style="opacity:.6"' : ''} data-cal-item="${e.type}:${e.id}:${e.date}">
                 <div class="row-main">
                   <div class="row-title">${esc(e.title)}</div>
-                  <div class="row-meta">${TYPE_LABELS[e.type]}${e.future ? ' · upcoming' : ''}${e.cont ? ' · ongoing' : ''}</div>
+                  <div class="row-meta">${TYPE_LABELS[e.type]}${e.future ? ' · upcoming' : ''}${e.cont ? ' · ongoing' : ''}${e.skipped ? ' · skipped' : ''}</div>
                 </div>
-                <span class="pill">${TYPE_LABELS[e.type]}</span>
+                <span class="pill">${e.skipped ? 'Skipped' : TYPE_LABELS[e.type]}</span>
               </article>`).join('')
           : '<div class="empty">Nothing on this day.</div>');
     }
@@ -3549,12 +3678,12 @@
             <section class="list">
               <h3 style="margin:6px 0 0;font-size:16px">${esc(dayName(date))}</h3>
               ${items.map((a) => `
-                <article class="row-item clickable" onclick="openCalendarItem('activity', '${a.id}', '${date}')">
+                <article class="row-item clickable"${isSkippedOn(a, date) ? ' style="opacity:.6"' : ''} onclick="openCalendarItem('activity', '${a.id}', '${date}')">
                   <div class="row-main">
                     <div class="row-title">${a.start_time ? esc(fmtTime(a.start_time)) + ' ' : ''}${esc(a.title)}</div>
                     <div class="row-meta">${[isParent ? esc(childName(a.child_id)) : '', timeRange(a) && a.start_time ? esc(timeRange(a)) : '', esc(a.details || '')].filter(Boolean).join(' · ')}</div>
                   </div>
-                  ${a.leave_time ? `<span class="pill amber">Leave ${esc(fmtTime(a.leave_time))}</span>` : ''}
+                  ${isSkippedOn(a, date) ? '<span class="pill">Skipped</span>' : (a.leave_time ? `<span class="pill amber">Leave ${esc(fmtTime(a.leave_time))}</span>` : '')}
                 </article>`).join('')}
             </section>`).join('')
         : '<div class="empty">Nothing in the next 7 days.</div>';
