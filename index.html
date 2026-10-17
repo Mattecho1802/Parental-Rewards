@@ -592,6 +592,10 @@
     .note-card.unread { box-shadow: 0 0 0 2px var(--tint-border); }
     .note-text { white-space: pre-wrap; line-height: 1.45; }
 
+    .setup-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-alt); cursor: pointer; }
+    .setup-row input { width: auto; margin: 3px 0 0; flex: none; }
+    .setup-row small { display: block; color: var(--muted); font-weight: 400; }
+
     .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 8px; }
     .theme-option { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 10px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-weight: 800; text-align: left; }
     .theme-option.active { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue) inset; }
@@ -626,6 +630,16 @@
       .app-shell main { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
       html { scroll-padding-bottom: 110px; }
       .toast { bottom: 88px; }
+      .app-shell main { gap: 16px; padding-top: 16px; }
+      .app-shell .block { gap: 10px; }
+      .app-shell .subtitle { display: none; }
+      .app-shell h1 { font-size: 26px; }
+      .app-shell .topbar { gap: 10px; }
+      .app-shell .score-card { padding: 10px 14px; }
+      .app-shell .score-card strong { font-size: 26px; margin-top: 2px; }
+      .app-shell .attention { padding: 12px; }
+      .app-shell .goal-card { padding: 14px; gap: 10px; }
+      .app-shell .block-head h2 { font-size: 20px; }
     }
 
     @media (max-width: 900px) {
@@ -793,6 +807,16 @@
         </div>
       </header>
 
+      <section id="todaySection" class="block" data-view="home">
+        <div class="block-head">
+          <div>
+            <h2>Today</h2>
+            <p class="block-sub" id="todaySub"></p>
+          </div>
+        </div>
+        <div id="todayList" class="list"></div>
+      </section>
+
       <section id="attentionSection" class="block attention parent-only" data-view="home">
         <div class="block-head">
           <h2>Needs your attention <span class="count hidden" id="attentionCount"></span></h2>
@@ -895,7 +919,7 @@
         <div id="goalList" class="list"></div>
       </section>
 
-      <section id="activitiesSection" class="block" data-view="home">
+      <section id="activitiesSection" class="block" data-view="calendar">
         <div class="block-head">
           <div>
             <h2>Activities</h2>
@@ -1052,7 +1076,7 @@
         <div id="consequenceList" class="list"></div>
       </section>
 
-      <section id="challengesSection" class="block challenges-block" data-view="home">
+      <section id="challengesSection" class="block challenges-block" data-view="rewards">
         <div class="block-head">
           <div>
             <h2>Optional challenges</h2>
@@ -1840,11 +1864,12 @@
 
       // One page, no tabs: show the sections in order of importance for who is signed in
       const order = isParent
-        ? { attentionSection: 0, childrenSection: 1, goalsSection: 2, activitiesSection: 3, feedbackSection: 4, calendarSection: 5, consequenceSection: 6, challengesSection: 7, rewardsSection: 8, summarySection: 9, historySection: 10, settingsSection: 11, themeSection: 12 }
-        : { feedbackSection: 0, consequenceSection: 1, goalsSection: 2, activitiesSection: 3, calendarSection: 4, challengesSection: 5, rewardsSection: 6, historySection: 7, themeSection: 8 };
+        ? { todaySection: -1, attentionSection: 0, childrenSection: 1, goalsSection: 2, activitiesSection: 3, feedbackSection: 4, calendarSection: 5, consequenceSection: 6, challengesSection: 7, rewardsSection: 8, summarySection: 9, historySection: 10, settingsSection: 11, themeSection: 12 }
+        : { todaySection: -1, feedbackSection: 0, consequenceSection: 1, goalsSection: 2, activitiesSection: 3, calendarSection: 4, challengesSection: 5, rewardsSection: 6, historySection: 7, themeSection: 8 };
       Object.entries(order).forEach(([id, position]) => { $('#' + id).style.order = position; });
       // Children have no Activity page, so their history sits on their Profile page
       $('#historySection').dataset.view = isParent ? 'activity' : 'settings';
+      $('#feedbackSection').dataset.view = isParent ? 'activity' : 'home';
       $('#navActivity').classList.toggle('hidden', !isParent);
 
       renderParents();
@@ -1865,6 +1890,7 @@
       renderActivities();
       renderFeedback();
       renderCalendar();
+      renderToday();
       updatePushUI();
     }
 
@@ -1888,7 +1914,7 @@
             </div>
             <span class="pill green">${child.points} points</span>
           </div>
-          <div class="row"><button class="btn ghost small" type="button" onclick="openChildDetail('${child.id}')">View details</button><button class="btn ghost small" type="button" onclick="openFeedbackFor('${child.id}')">Give feedback</button></div>
+          <div class="row"><button class="btn ghost small" type="button" onclick="openChildDetail('${child.id}')">View details</button><button class="btn ghost small" type="button" onclick="openFeedbackFor('${child.id}')">Give feedback</button><button class="btn ghost small" type="button" onclick="openChildSetup('${child.id}')">Quick setup</button></div>
           <details class="inline-edit">
             <summary>Manage</summary>
             <div class="row">
@@ -1900,7 +1926,7 @@
               <button class="btn secondary small" type="button" onclick="setChildPoints('${child.id}')">Save points</button>
             </div>
             <div class="row">
-              <button class="btn danger small" type="button" onclick="removeChild('${child.id}')">Remove child</button>
+              <button class="btn danger small" type="button" onclick="deleteChildAccount('${child.id}')">Remove child</button>
             </div>
           </details>
         </article>
@@ -2271,7 +2297,7 @@
         if (isParent) {
           if (goal.status === 'waiting') { const d = goalDecision(goal, 'g'); actions += d.buttons; boxes += d.boxes; }
           if (overdue) actions += `<button class="btn danger small" type="button" onclick="applyConsequence('${goal.id}')">Apply consequence</button><button class="btn ghost small" type="button" onclick="ignoreConsequence('${goal.id}')">Ignore consequence</button>`;
-          if (goal.status === 'active' && (goal.recurring_days || []).length) actions += `<button class="btn ghost small" type="button" title="Skip this one and move to the next" onclick="setOccurrenceSkipped('goal', '${goal.id}', '${goal.due_date}', true)">Skip this one</button>`;
+          if (goal.status === 'active' && (goal.recurring_days || []).length && goal.due_date >= todayStr()) actions += `<button class="btn ghost small" type="button" title="Skip this one and move to the next" onclick="setOccurrenceSkipped('goal', '${goal.id}', '${goal.due_date}', true)">Skip this one</button>`;
           actions += `<button class="btn secondary small" type="button" onclick="startEditGoal('${goal.id}')">Edit</button>`;
           actions += `<button class="btn secondary small" type="button" onclick="deleteGoal('${goal.id}')">Delete</button>`;
         } else if (goal.status === 'active' && !upcoming) {
@@ -2390,7 +2416,7 @@
 
       $('#consequenceSection').classList.toggle('hidden', !isParent && !active.length && !goalItems.length);
       if (!active.length && !goalItems.length) {
-        list.innerHTML = '<div class="empty">No consequences to show.</div>';
+        list.innerHTML = isParent ? '' : '<div class="empty">No consequences to show.</div>';
         return;
       }
 
@@ -2786,7 +2812,7 @@
         setMessage('#childAddError', 'A child with that name already exists.');
         return;
       }
-      const { error } = await db.from('children').insert({ family_id: family.id, name, points: 0 });
+      const { data: created, error } = await db.from('children').insert({ family_id: family.id, name, points: 0 }).select('id').single();
       if (error) {
         setMessage('#childAddError', error.message);
         return;
@@ -2794,6 +2820,7 @@
       event.target.reset();
       closeForm('childForm');
       await refreshAndRender();
+      if (created) openChildSetup(created.id);
     }
 
     async function renameChild(childId) {
@@ -2827,7 +2854,7 @@
       await refreshAndRender();
     }
 
-    async function removeChild(childId) {
+    async function deleteChildAccount(childId) {
       if (session.role !== 'parent') return;
       const kid = family.children.find((c) => c.id === childId);
       if (!kid) return;
@@ -3323,6 +3350,7 @@
     function skipButton(type, item, date) {
       if (!date || !(item.recurring_days || []).length) return '';
       const skipped = isSkippedOn(item, date);
+      if (type === 'goal' && !skipped && date < todayStr()) return '';  // overdue or past goal days cannot be skipped
       if (type === 'goal' && date < item.due_date) return '';           // goal days already passed
       if (skipped) {
         if (type === 'goal' && date <= item.due_date) return '';        // the goal has already moved on
@@ -3345,6 +3373,10 @@
       const skips = new Set(item.skip_dates || []);
       const update = {};
       if (skip) {
+        if (type === 'goal' && date < todayStr()) {
+          alert('An overdue goal cannot be skipped. Use Ignore consequence instead.');
+          return;
+        }
         if (type === 'goal' && date === item.due_date) {
           if (item.status !== 'active') {
             alert('This goal is waiting for approval or has a consequence, so it cannot be skipped right now.');
@@ -3475,7 +3507,7 @@
       return { first, last, start: addDays(first, -lead), end: addDays(last, tail) };
     }
 
-    function calendarEvents(start, end) {
+    function calendarEvents(start, end, filter = calFilter) {
       const isParent = session.role === 'parent';
       const child = activeChild();
       const mine = (x) => isParent || x.child_id === child.id;
@@ -3484,7 +3516,7 @@
       for (let d = start; d <= end; d = addDays(d, 1)) dates.push(d);
       const events = [];
 
-      if (calFilter.goal) {
+      if (filter.goal) {
         family.goals.filter(mine).forEach((g) => {
           if (g.status === 'completed') return;
           const days = g.recurring_days || [];
@@ -3497,7 +3529,7 @@
           }
         });
       }
-      if (calFilter.consequence) {
+      if (filter.consequence) {
         (family.consequences || []).filter((c) => c.status === 'active' && mine(c)).forEach((c) => {
           const lastDay = c.ends_on || c.starts_on;
           dates.forEach((d) => {
@@ -3505,12 +3537,12 @@
           });
         });
       }
-      if (calFilter.reward) {
+      if (filter.reward) {
         family.rewards.forEach((r) => {
           if (r.available_until >= start && r.available_until <= end) events.push({ date: r.available_until, type: 'reward', id: r.id, title: 'Ends: ' + r.name });
         });
       }
-      if (calFilter.challenge) {
+      if (filter.challenge) {
         family.challenges.filter(mine).forEach((c) => {
           const days = c.recurring_days || [];
           if (!days.length) return;
@@ -3520,7 +3552,7 @@
           });
         });
       }
-      if (calFilter.activity) {
+      if (filter.activity) {
         (family.activities || []).filter(mine).forEach((a) => {
           dates.forEach((d) => {
             if (activityOccursOn(a, d)) {
@@ -3599,6 +3631,34 @@
                 <span class="pill">${e.skipped ? 'Skipped' : TYPE_LABELS[e.type]}</span>
               </article>`).join('')
           : '<div class="empty">Nothing on this day.</div>');
+    }
+
+    // The "Today" panel at the top of the dashboard: the same items as today's calendar day
+    function renderToday() {
+      const today = todayStr();
+      $('#todaySub').textContent = prettyDate(today);
+      const events = calendarEvents(today, today, { goal: true, consequence: true, reward: true, activity: true, challenge: false });
+      const rank = { activity: 0, goal: 1, consequence: 2, reward: 3 };
+      events.sort((x, y) => (rank[x.type] - rank[y.type]) || x.title.localeCompare(y.title));
+      const list = $('#todayList');
+      if (!events.length) {
+        list.innerHTML = '<p class="meta" style="margin:0">Nothing planned today.</p>';
+        return;
+      }
+      list.innerHTML = events.map((e) => {
+        const activity = e.type === 'activity' ? (family.activities || []).find((a) => a.id === e.id) : null;
+        const pill = e.skipped ? 'Skipped'
+          : activity && activity.leave_time ? 'Leave ' + fmtTime(activity.leave_time)
+          : TYPE_LABELS[e.type];
+        return `
+          <article class="row-item clickable"${e.skipped ? ' style="opacity:.6"' : ''} onclick="openCalendarItem('${e.type}', '${e.id}', '${e.date}')">
+            <div class="row-main">
+              <div class="row-title">${esc(e.title)}</div>
+              <div class="row-meta">${TYPE_LABELS[e.type]}${e.cont ? ' · ongoing' : ''}${e.skipped ? ' · skipped' : ''}</div>
+            </div>
+            <span class="pill${activity && activity.leave_time && !e.skipped ? ' amber' : ''}">${esc(pill)}</span>
+          </article>`;
+      }).join('');
     }
 
     function shiftMonth(delta) {
@@ -3795,6 +3855,120 @@
     }
 
     function modalDeleteActivity(id) { closeModal(); deleteActivity(id); }
+
+    // ---------- set up a child: starter goals, challenges and rewards ----------
+    const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+    const SCHOOL_DAYS = [1, 2, 3, 4, 5];
+
+    const GOAL_TEMPLATES = [
+      { name: 'Make your bed', days: ALL_DAYS, on: true },
+      { name: 'Homework done', days: SCHOOL_DAYS, on: true },
+      { name: 'Tidy your bedroom', days: [6], on: true },
+      { name: 'Brush teeth morning and night', days: ALL_DAYS },
+      { name: 'Put dirty clothes in the wash basket', days: ALL_DAYS },
+      { name: 'Set or clear the table', days: ALL_DAYS },
+      { name: 'Feed the pet', days: ALL_DAYS },
+      { name: 'Read for 20 minutes', days: ALL_DAYS },
+      { name: 'Pack school bag for tomorrow', days: [0, 1, 2, 3, 4] },
+      { name: 'Take out the bins', days: [3] }
+    ];
+
+    const CHALLENGE_TEMPLATES = [
+      { name: 'Wash the car', points: 20, days: [], on: true },
+      { name: 'Help with the washing up', points: 5, days: [], on: true },
+      { name: 'Vacuum a room', points: 10, days: [], on: true },
+      { name: 'Water the plants', points: 5, days: [0] },
+      { name: 'Walk the dog', points: 10, days: [] },
+      { name: 'Help cook dinner', points: 10, days: [] },
+      { name: 'Tidy the garden', points: 15, days: [] },
+      { name: 'Sort out toys or clothes', points: 10, days: [] },
+      { name: 'Do something kind for someone', points: 10, days: [] },
+      { name: 'Read an extra chapter', points: 5, days: [] }
+    ];
+
+    const REWARD_TEMPLATES = [
+      { name: '30 minutes extra screen time', cost: 30, limit: 10, on: true },
+      { name: 'Choose what is for dinner', cost: 40, limit: 5 },
+      { name: 'Movie night', cost: 60, limit: 5, on: true },
+      { name: 'Stay up 30 minutes later', cost: 40, limit: 5 },
+      { name: 'Trip to the park or an ice cream', cost: 50, limit: 5, on: true },
+      { name: 'Pick a family game', cost: 25, limit: 10 }
+    ];
+
+    function templateDays(days) {
+      if (days.length === 7) return 'Every day';
+      if (!days.length) return 'One-off';
+      if (days.length === 5 && SCHOOL_DAYS.every((d) => days.includes(d))) return 'Weekdays';
+      return 'Every ' + [1, 2, 3, 4, 5, 6, 0].filter((d) => days.includes(d)).map((d) => DAY_NAMES[d]).join(', ');
+    }
+
+    function openChildSetup(childId) {
+      if (session.role !== 'parent') return;
+      const kid = family.children.find((c) => c.id === childId);
+      if (!kid) return;
+      const row = (kind, i, name, hint, checked) => `
+        <label class="setup-row">
+          <input type="checkbox" data-setup="${kind}:${i}" ${checked ? 'checked' : ''} />
+          <span>${esc(name)}<small>${esc(hint)}</small></span>
+        </label>`;
+      const body = `
+        <p class="meta">Tick what you would like to start ${esc(kid.name)} with. Goals begin with the consequence "No screens" for 1 day. You can edit or delete everything afterwards.</p>
+        <h3>Goals (things to do by a deadline)</h3>
+        <div class="list">${GOAL_TEMPLATES.map((t, i) => row('goal', i, t.name, templateDays(t.days), t.on)).join('')}</div>
+        <h3>Optional challenges (extra ways to earn points)</h3>
+        <div class="list">${CHALLENGE_TEMPLATES.map((t, i) => row('challenge', i, t.name, t.points + ' points · ' + templateDays(t.days), t.on)).join('')}</div>
+        ${family.rewards.length ? '' : `
+        <h3>Starter rewards (for the whole family)</h3>
+        <div class="list">${REWARD_TEMPLATES.map((t, i) => row('reward', i, t.name, t.cost + ' points', t.on)).join('')}</div>`}
+        <p id="setupError" class="error"></p>
+      `;
+      showModal('Set up ' + kid.name, body,
+        `<button class="btn" type="button" onclick="applyChildSetup('${childId}')">Add selected</button>
+         <button class="btn secondary" type="button" onclick="closeModal()">Skip for now</button>`);
+    }
+
+    async function applyChildSetup(childId) {
+      if (session.role !== 'parent') return;
+      const kid = family.children.find((c) => c.id === childId);
+      if (!kid) return;
+      const picked = $$('#modalBody input[data-setup]:checked').map((box) => box.dataset.setup.split(':'));
+      if (!picked.length) { closeModal(); return; }
+      setMessage('#setupError', '');
+
+      const goals = [];
+      const challenges = [];
+      const rewards = [];
+      picked.forEach(([kind, index]) => {
+        const i = Number(index);
+        if (kind === 'goal') {
+          const t = GOAL_TEMPLATES[i];
+          goals.push({
+            family_id: family.id, child_id: childId, name: t.name, details: '',
+            consequence: 'No screens', consequence_days: 1,
+            due_date: firstOccurrence(t.days), status: 'active', recurring_days: t.days
+          });
+        } else if (kind === 'challenge') {
+          const t = CHALLENGE_TEMPLATES[i];
+          challenges.push({ family_id: family.id, child_id: childId, name: t.name, points: t.points, details: '', recurring_days: t.days });
+        } else if (kind === 'reward') {
+          const t = REWARD_TEMPLATES[i];
+          rewards.push({ family_id: family.id, name: t.name, cost: t.cost, limit_count: t.limit, claimed_count: 0, available_until: addDays(todayStr(), 90) });
+        }
+      });
+
+      const steps = [['goals', goals], ['challenges', challenges], ['rewards', rewards]];
+      for (const [table, rows] of steps) {
+        if (!rows.length) continue;
+        const { error } = await db.from(table).insert(rows);
+        if (error) {
+          setMessage('#setupError', 'Could not add ' + table + ': ' + error.message);
+          return;
+        }
+      }
+      closeModal();
+      await refreshAndRender();
+      showToast('Added ' + picked.length + (picked.length === 1 ? ' item' : ' items') + ' for ' + kid.name, null);
+    }
 
     // ---------- feedback notes ----------
     const NOTE_LABELS = { praise: 'Well done', note: 'Note', reminder: 'Reminder' };
