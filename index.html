@@ -463,7 +463,7 @@
     .error { color: var(--red); font-weight: 700; min-height: 20px; }
     .hidden { display: none !important; }
 
-    main > .topbar { order: -1; }
+    main > .topbar { order: -3; }
     .block { display: grid; gap: 14px; align-content: start; }
     .block-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
     .block-head h2 { margin: 0; font-size: 24px; display: flex; align-items: center; gap: 10px; }
@@ -596,6 +596,21 @@
     .setup-row input { width: auto; margin: 3px 0 0; flex: none; }
     .setup-row small { display: block; color: var(--muted); font-weight: 400; }
 
+    .overview { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; box-shadow: var(--shadow); }
+    .donut-wrap { position: relative; width: 190px; height: 190px; flex: none; }
+    .donut-wrap svg { width: 100%; height: 100%; display: block; }
+    .donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; text-align: center; }
+    .donut-center strong { font-size: 34px; line-height: 1; }
+    .donut-center span { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+    .donut-center small { color: var(--muted); font-size: 12px; margin-top: 2px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .donut-legend { display: grid; gap: 8px; flex: 1; min-width: 200px; }
+    .legend-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-alt); color: var(--ink); font-weight: 700; text-align: left; }
+    .legend-item i { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+    .legend-item span { flex: 1; }
+    .legend-item.zero { opacity: 0.55; }
+    .legend-item:hover { background: var(--hover-row); }
+    .filter-banner { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; border-radius: 8px; background: var(--tint); border: 1px solid var(--tint-border); font-size: 14px; }
+
     .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 8px; }
     .theme-option { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 10px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-weight: 800; text-align: left; }
     .theme-option.active { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue) inset; }
@@ -640,6 +655,10 @@
       .app-shell .attention { padding: 12px; }
       .app-shell .goal-card { padding: 14px; gap: 10px; }
       .app-shell .block-head h2 { font-size: 20px; }
+      .app-shell .overview { padding: 12px; gap: 12px; justify-content: center; }
+      .app-shell .donut-wrap { width: 150px; height: 150px; }
+      .app-shell .donut-center strong { font-size: 28px; }
+      .app-shell .donut-legend { min-width: 150px; }
     }
 
     @media (max-width: 900px) {
@@ -806,6 +825,19 @@
           <strong id="scoreValue">0</strong>
         </div>
       </header>
+
+      <section id="overviewSection" class="block parent-only" data-view="home">
+        <div class="block-head">
+          <h2>Overview</h2>
+          <label id="overviewChildWrap" class="hidden">
+            <select id="overviewChild" aria-label="Show"></select>
+          </label>
+        </div>
+        <div class="overview">
+          <div class="donut-wrap" id="donutWrap"></div>
+          <div class="donut-legend" id="donutLegend"></div>
+        </div>
+      </section>
 
       <section id="todaySection" class="block" data-view="home">
         <div class="block-head">
@@ -1540,20 +1572,13 @@
     function goalProgress(goal) {
       const now = new Date();
       const [y, m, d] = goal.due_date.split('-').map(Number);
-      const end = new Date(y, m - 1, d + 1); // the deadline is the end of the due day
-      const days = goal.recurring_days || [];
-      let start;
-      if (days.length) {
-        let prev = null;
-        for (let i = 1; i <= 7; i++) {
-          const c = addDays(goal.due_date, -i);
-          if (days.includes(weekdayOf(c))) { prev = c; break; }
-        }
-        const [py, pm, pd] = (prev || addDays(goal.due_date, -7)).split('-').map(Number);
-        start = new Date(py, pm - 1, pd + 1);
-      } else {
-        start = goal.created_at ? new Date(goal.created_at) : new Date(end.getTime() - 7 * 86400000);
-      }
+      const repeating = (goal.recurring_days || []).length > 0;
+      // A repeating goal only counts its own day: the bar runs from 6am to 9pm that day.
+      // Other goals run from when they were created to the end of the due day.
+      const end = repeating ? new Date(y, m - 1, d, 21, 0) : new Date(y, m - 1, d + 1);
+      const start = repeating
+        ? new Date(y, m - 1, d, 6, 0)
+        : (goal.created_at ? new Date(goal.created_at) : new Date(end.getTime() - 7 * 86400000));
       const total = end - start;
       const pct = total > 0 ? Math.min(100, Math.max(0, ((now - start) / total) * 100)) : 100;
       return { pct, daysLeft: dayDiff(todayStr(), goal.due_date) };
@@ -1864,7 +1889,7 @@
 
       // One page, no tabs: show the sections in order of importance for who is signed in
       const order = isParent
-        ? { todaySection: -1, attentionSection: 0, childrenSection: 1, goalsSection: 2, activitiesSection: 3, feedbackSection: 4, calendarSection: 5, consequenceSection: 6, challengesSection: 7, rewardsSection: 8, summarySection: 9, historySection: 10, settingsSection: 11, themeSection: 12 }
+        ? { overviewSection: -2, todaySection: -1, attentionSection: 0, childrenSection: 1, goalsSection: 2, activitiesSection: 3, feedbackSection: 4, calendarSection: 5, consequenceSection: 6, challengesSection: 7, rewardsSection: 8, summarySection: 9, historySection: 10, settingsSection: 11, themeSection: 12 }
         : { todaySection: -1, feedbackSection: 0, consequenceSection: 1, goalsSection: 2, activitiesSection: 3, calendarSection: 4, challengesSection: 5, rewardsSection: 6, historySection: 7, themeSection: 8 };
       Object.entries(order).forEach(([id, position]) => { $('#' + id).style.order = position; });
       // Children have no Activity page, so their history sits on their Profile page
@@ -1890,6 +1915,7 @@
       renderActivities();
       renderFeedback();
       renderCalendar();
+      renderOverview();
       renderToday();
       updatePushUI();
     }
@@ -2268,9 +2294,25 @@
         return;
       }
 
-      const open = goals.filter((g) => g.status !== 'completed' && !isWaitingForNextDay(g)).sort((a, b) => a.due_date.localeCompare(b.due_date));
-      const upcomingGoals = goals.filter(isWaitingForNextDay).sort((a, b) => a.due_date.localeCompare(b.due_date));
-      const done = goals.filter((g) => g.status === 'completed');
+      let open = goals.filter((g) => g.status !== 'completed' && !isWaitingForNextDay(g)).sort((a, b) => a.due_date.localeCompare(b.due_date));
+      let upcomingGoals = goals.filter(isWaitingForNextDay).sort((a, b) => a.due_date.localeCompare(b.due_date));
+      let done = goals.filter((g) => g.status === 'completed');
+
+      // Picked from the overview chart: only overdue goals, or only goals due today
+      const filtering = isParent && !!goalFilter;
+      let banner = '';
+      if (filtering) {
+        const today = todayStr();
+        open = goals.filter((g) =>
+          g.status === 'active' && !isWaitingForNextDay(g)
+          && (goalFilter.childId === 'all' || g.child_id === goalFilter.childId)
+          && (goalFilter.kind === 'overdue' ? g.due_date < today : g.due_date === today)
+        ).sort((a, b) => a.due_date.localeCompare(b.due_date));
+        upcomingGoals = [];
+        done = [];
+        const kidName = goalFilter.childId !== 'all' ? childName(goalFilter.childId) : '';
+        banner = `<div class="filter-banner"><span>Showing <strong>${goalFilter.kind === 'overdue' ? 'overdue goals' : 'goals due today'}</strong>${kidName ? ' for ' + esc(kidName) : ''}</span><button class="btn ghost small" type="button" onclick="clearGoalFilter()">Show all goals</button></div>`;
+      }
 
       const card = (goal) => {
         const p = goalProgress(goal);
@@ -2350,7 +2392,7 @@
         </div>
       `;
 
-      list.innerHTML = (open.length ? open.map(card).join('') : '<div class="empty">No open goals right now.</div>')
+      list.innerHTML = banner + (open.length ? open.map(card).join('') : `<div class="empty">${filtering ? 'No goals match.' : 'No open goals right now.'}</div>`)
         + (upcomingGoals.length ? `<details class="done-list"><summary>Upcoming (${upcomingGoals.length})</summary>${upcomingGoals.map(upcomingRow).join('')}</details>` : '')
         + (done.length ? `<details class="done-list"><summary>Completed (${done.length})</summary>${done.map(doneRow).join('')}</details>` : '');
     }
@@ -3633,6 +3675,98 @@
           : '<div class="empty">Nothing on this day.</div>');
     }
 
+    // ---------- overview donut (parents) ----------
+    let overviewChild = 'all';
+    let goalFilter = null; // { kind: 'overdue' | 'today', childId: 'all' | id }
+
+    function overviewCounts(childId) {
+      const today = todayStr();
+      const kids = childId === 'all' ? family.children : family.children.filter((c) => c.id === childId);
+      const ids = new Set(kids.map((c) => c.id));
+      const activeGoals = family.goals.filter((g) => ids.has(g.child_id) && g.status === 'active' && !isWaitingForNextDay(g));
+      return {
+        points: kids.reduce((sum, c) => sum + c.points, 0),
+        activitiesToday: (family.activities || []).filter((a) => ids.has(a.child_id) && activityOccursOn(a, today) && !isSkippedOn(a, today)).length,
+        goalsToday: activeGoals.filter((g) => g.due_date === today).length,
+        overdue: activeGoals.filter((g) => g.due_date < today).length,
+        attention: family.requests.filter((r) => ids.has(r.child_id) && r.status === 'waiting').length
+          + family.goals.filter((g) => ids.has(g.child_id) && g.status === 'waiting').length
+      };
+    }
+
+    function donutSvg(parts, total) {
+      const r = 15.9155; // circumference of 100
+      if (!total) {
+        return `<svg viewBox="0 0 36 36" role="img" aria-label="Nothing needs attention"><circle cx="18" cy="18" r="${r}" fill="none" stroke-width="4" style="stroke: var(--track)"/></svg>`;
+      }
+      const shown = parts.filter((p) => p.value > 0);
+      const gap = shown.length > 1 ? 0.8 : 0;
+      let offset = 0;
+      const segments = shown.map((p) => {
+        const length = (p.value / total) * 100;
+        const dash = Math.max(0, length - gap);
+        const circle = `<circle cx="18" cy="18" r="${r}" fill="none" stroke-width="4" stroke-dasharray="${dash} ${100 - dash}" stroke-dashoffset="${-offset}" style="stroke: ${p.color}; cursor: pointer" onclick="goToOverview('${p.key}')"><title>${p.label}: ${p.value}</title></circle>`;
+        offset += length;
+        return circle;
+      }).join('');
+      return `<svg viewBox="0 0 36 36" role="img" aria-label="Today at a glance"><g transform="rotate(-90 18 18)">${segments}</g></svg>`;
+    }
+
+    function renderOverview() {
+      if (session.role !== 'parent') return;
+      const kids = family.children;
+      if (overviewChild !== 'all' && !kids.some((c) => c.id === overviewChild)) overviewChild = 'all';
+      $('#overviewChildWrap').classList.toggle('hidden', kids.length < 2);
+      const select = $('#overviewChild');
+      select.innerHTML = '<option value="all">All children</option>' + kids.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+      select.value = overviewChild;
+
+      const counts = overviewCounts(overviewChild);
+      const parts = [
+        { key: 'attention', label: 'Needs attention', value: counts.attention, color: 'var(--bar-warn)' },
+        { key: 'overdue', label: 'Overdue goals', value: counts.overdue, color: 'var(--red)' },
+        { key: 'goals', label: 'Goals today', value: counts.goalsToday, color: 'var(--blue)' },
+        { key: 'activities', label: 'Activities today', value: counts.activitiesToday, color: '#0e9aa7' }
+      ];
+      const total = parts.reduce((sum, p) => sum + p.value, 0);
+      const who = overviewChild === 'all' ? (kids.length === 1 ? kids[0].name : 'All children') : childName(overviewChild);
+
+      $('#donutWrap').innerHTML = donutSvg(parts, total)
+        + `<div class="donut-center"><strong>${counts.points}</strong><span>points</span><small>${esc(who)}</small></div>`;
+      $('#donutLegend').innerHTML = parts.map((p) => `
+        <button class="legend-item${p.value ? '' : ' zero'}" type="button" onclick="goToOverview('${p.key}')">
+          <i style="background:${p.color}"></i><span>${p.label}</span><strong>${p.value}</strong>
+        </button>`).join('');
+    }
+
+    function clearGoalFilter() {
+      goalFilter = null;
+      renderGoals();
+    }
+
+    function jumpTo(sectionId) {
+      const el = $('#' + sectionId);
+      if (!el) return;
+      const view = el.dataset.view;
+      if (view && mobileView !== view) setMobileView(view);
+      setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+    }
+
+    // Tapping a part of the chart (or its legend) takes you to that part of the app
+    function goToOverview(kind) {
+      if (kind === 'attention') {
+        goalFilter = null;
+        renderGoals();
+        jumpTo('attentionSection');
+      } else if (kind === 'activities') {
+        jumpTo('activitiesSection');
+      } else {
+        goalFilter = { kind: kind === 'overdue' ? 'overdue' : 'today', childId: overviewChild };
+        renderGoals();
+        jumpTo('goalsSection');
+      }
+    }
+
     // The "Today" panel at the top of the dashboard: the same items as today's calendar day
     function renderToday() {
       const today = todayStr();
@@ -4395,6 +4529,12 @@
         if (getThemeChoice() === 'system') applyTheme();
       });
     }
+    $('#overviewChild').addEventListener('change', () => {
+      overviewChild = $('#overviewChild').value;
+      if (goalFilter) goalFilter.childId = overviewChild;
+      renderOverview();
+      renderGoals();
+    });
     $('#modalClose').addEventListener('click', closeModal);
     $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
