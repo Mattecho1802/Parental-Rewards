@@ -35,6 +35,7 @@ self.addEventListener('notificationclick', (event) => {
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
       for (const client of windows) {
         if (client.url.startsWith(self.registration.scope) && 'focus' in client) {
+          client.postMessage({ type: 'notification-click', url: target });
           return client.focus();
         }
       }
