@@ -556,6 +556,7 @@
     .cal-chip { font-size: 11px; font-weight: 700; padding: 2px 5px; border-radius: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; cursor: pointer; }
     .cal-chip.future { opacity: 0.6; }
     .cal-chip.skipped { opacity: 0.45; text-decoration: line-through; }
+    .cal-chip.done { opacity: 0.5; text-decoration: line-through; }
     .cal-chip.cont { border-radius: 0; }
     .t-goal { background: var(--blue); }
     .t-consequence { background: var(--red); }
@@ -829,9 +830,12 @@
       <section id="overviewSection" class="block parent-only" data-view="home">
         <div class="block-head">
           <h2>Overview</h2>
-          <label id="overviewChildWrap" class="hidden">
-            <select id="overviewChild" aria-label="Show"></select>
-          </label>
+          <div class="row">
+            <button class="btn ghost small" type="button" id="aiSummaryBtn">Weekly report</button>
+            <label id="overviewChildWrap" class="hidden">
+              <select id="overviewChild" aria-label="Show"></select>
+            </label>
+          </div>
         </div>
         <div class="overview">
           <div class="donut-wrap" id="donutWrap"></div>
@@ -874,6 +878,22 @@
           </div>
         </details>
         <div id="childrenList" class="kid-grid"></div>
+      </section>
+
+      <section id="aiSummarySection" class="block parent-only" data-view="activity">
+        <div class="block-head">
+          <div>
+            <h2>Weekly report</h2>
+            <p class="block-sub">Written by AI from the week's goals, challenges, feedback and activities.</p>
+          </div>
+        </div>
+        <div class="row">
+          <button class="btn small" type="button" id="aiGenThis" data-aigen>Write this week's report</button>
+          <button class="btn ghost small" type="button" id="aiGenLast" data-aigen>Last week's</button>
+        </div>
+        <p class="meta" id="aiStatus" style="margin:0"></p>
+        <div id="aiSummaryList" class="list"></div>
+        <p class="meta" style="margin:0">To write it, the week's names, goals, feedback and activities are sent to Anthropic's AI service. A new report is also written every Sunday evening, and you get a notification when it is ready.</p>
       </section>
 
       <section id="summarySection" class="block parent-only" data-view="activity">
@@ -1620,7 +1640,7 @@
       if (error) { loading = false; return 'error'; }
       if (!familyRow) { loading = false; return 'expired'; }
 
-      const [childrenRes, challengesRes, goalsRes, rewardsRes, requestsRes, membersRes, logRes, consRes, approvalsRes, notesRes, activitiesRes] = await Promise.all([
+      const [childrenRes, challengesRes, goalsRes, rewardsRes, requestsRes, membersRes, logRes, consRes, approvalsRes, notesRes, activitiesRes, summariesRes] = await Promise.all([
         db.from('children').select('id, family_id, name, points, created_at').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('challenges').select('*').eq('family_id', familyId).order('created_at', { ascending: true }),
         db.from('goals').select('*').eq('family_id', familyId).order('due_date', { ascending: true }),
@@ -1631,7 +1651,8 @@
         db.from('consequences').select('*').eq('family_id', familyId).order('created_at', { ascending: false }),
         db.from('approvals').select('*').eq('family_id', familyId).order('created_at', { ascending: false }).limit(200),
         db.from('notes').select('*').eq('family_id', familyId).order('created_at', { ascending: false }).limit(100),
-        db.from('activities').select('*').eq('family_id', familyId).order('activity_date', { ascending: true })
+        db.from('activities').select('*').eq('family_id', familyId).order('activity_date', { ascending: true }),
+        db.from('weekly_summaries').select('*').eq('family_id', familyId).order('week_start', { ascending: false }).limit(12)
       ]);
 
       const members = membersRes.data || [];
@@ -1648,7 +1669,8 @@
         consequences: consRes.data || [],
         approvals: approvalsRes.data || [],
         notes: notesRes.data || [],
-        activities: activitiesRes.data || []
+        activities: activitiesRes.data || [],
+        summaries: summariesRes.data || []
       };
       const changed = !family || JSON.stringify(next) !== JSON.stringify(family);
       family = next;
@@ -1718,7 +1740,7 @@
       if (realtimeChannel || !session || session.role !== 'parent') return;
       const familyId = session.familyId;
       let channel = db.channel('family-' + familyId);
-      ['children', 'challenges', 'goals', 'rewards', 'completion_requests', 'consequences', 'points_log', 'family_members', 'approvals', 'notes', 'activities'].forEach((table) => {
+      ['children', 'challenges', 'goals', 'rewards', 'completion_requests', 'consequences', 'points_log', 'family_members', 'approvals', 'notes', 'activities', 'weekly_summaries'].forEach((table) => {
         channel = channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: 'family_id=eq.' + familyId }, () => {
           clearTimeout(realtimeTimer);
           realtimeTimer = setTimeout(() => { lastAutoRefresh = 0; autoRefresh(); }, 300);
@@ -1776,11 +1798,13 @@
       }
       needsOnboarding = false;
       session = { role: 'parent', familyId: member.family_id, parentName: member.name, memberRole: member.role, userId: user.id };
+      const openParam = new URLSearchParams(window.location.search).get('open');
       activeTab = new URLSearchParams(window.location.search).get('tab') === 'requests' ? 'requests' : 'family';
       if (window.location.search) history.replaceState(null, '', window.location.pathname);
       await refreshAndRender();
       syncPushSubscription();
       startRealtime();
+      if (openParam === 'summary') openSummary();
     }
 
     async function enterChild() {
@@ -1889,7 +1913,7 @@
 
       // One page, no tabs: show the sections in order of importance for who is signed in
       const order = isParent
-        ? { overviewSection: -2, todaySection: -1, attentionSection: 0, childrenSection: 1, goalsSection: 2, activitiesSection: 3, feedbackSection: 4, calendarSection: 5, consequenceSection: 6, challengesSection: 7, rewardsSection: 8, summarySection: 9, historySection: 10, settingsSection: 11, themeSection: 12 }
+        ? { overviewSection: -2, todaySection: -1, attentionSection: 0, childrenSection: 1, goalsSection: 2, activitiesSection: 3, feedbackSection: 4, calendarSection: 5, consequenceSection: 6, challengesSection: 7, rewardsSection: 8, aiSummarySection: 9, summarySection: 10, historySection: 11, settingsSection: 12, themeSection: 13 }
         : { todaySection: -1, feedbackSection: 0, consequenceSection: 1, goalsSection: 2, activitiesSection: 3, calendarSection: 4, challengesSection: 5, rewardsSection: 6, historySection: 7, themeSection: 8 };
       Object.entries(order).forEach(([id, position]) => { $('#' + id).style.order = position; });
       // Children have no Activity page, so their history sits on their Profile page
@@ -1916,6 +1940,7 @@
       renderFeedback();
       renderCalendar();
       renderOverview();
+      renderSummaries();
       renderToday();
       updatePushUI();
     }
@@ -3598,7 +3623,7 @@
         (family.activities || []).filter(mine).forEach((a) => {
           dates.forEach((d) => {
             if (activityOccursOn(a, d)) {
-              events.push({ date: d, type: 'activity', id: a.id, title: who(a.child_id) + (a.start_time ? fmtTime(a.start_time) + ' ' : '') + a.title, skipped: isSkippedOn(a, d) });
+              events.push({ date: d, type: 'activity', id: a.id, title: who(a.child_id) + (a.start_time ? fmtTime(a.start_time) + ' ' : '') + a.title, skipped: isSkippedOn(a, d), done: !isSkippedOn(a, d) && activityDone(a, d) });
             }
           });
         });
@@ -3652,7 +3677,7 @@
             <div class="cal-num">${Number(d.slice(8))}</div>
             <div class="cal-dots">${calDots(items)}</div>
             <div class="cal-chips">
-              ${items.slice(0, 3).map((e) => `<span class="cal-chip t-${e.type}${e.future ? ' future' : ''}${e.cont ? ' cont' : ''}${e.skipped ? ' skipped' : ''}" data-cal-item="${e.type}:${e.id}:${e.date}" title="${esc(e.title)}">${esc(e.title)}</span>`).join('')}
+              ${items.slice(0, 3).map((e) => `<span class="cal-chip t-${e.type}${e.future ? ' future' : ''}${e.cont ? ' cont' : ''}${e.skipped ? ' skipped' : ''}${e.done ? ' done' : ''}" data-cal-item="${e.type}:${e.id}:${e.date}" title="${esc(e.title)}">${esc(e.title)}</span>`).join('')}
               ${items.length > 3 ? `<span class="cal-more">+${items.length - 3} more</span>` : ''}
             </div>
           </div>
@@ -3665,14 +3690,93 @@
       $('#calDay').innerHTML = `<h3 style="margin:8px 0 0">${prettyDate(calSelected)}</h3>`
         + (dayItems.length
           ? dayItems.map((e) => `
-              <article class="row-item clickable"${e.skipped ? ' style="opacity:.6"' : ''} data-cal-item="${e.type}:${e.id}:${e.date}">
+              <article class="row-item clickable"${e.skipped || e.done ? ' style="opacity:.6"' : ''} data-cal-item="${e.type}:${e.id}:${e.date}">
                 <div class="row-main">
-                  <div class="row-title">${esc(e.title)}</div>
-                  <div class="row-meta">${TYPE_LABELS[e.type]}${e.future ? ' · upcoming' : ''}${e.cont ? ' · ongoing' : ''}${e.skipped ? ' · skipped' : ''}</div>
+                  <div class="row-title"${e.skipped || e.done ? ' style="text-decoration:line-through"' : ''}>${esc(e.title)}</div>
+                  <div class="row-meta">${TYPE_LABELS[e.type]}${e.future ? ' · upcoming' : ''}${e.cont ? ' · ongoing' : ''}${e.skipped ? ' · skipped' : ''}${e.done && !e.skipped ? ' · finished' : ''}</div>
                 </div>
-                <span class="pill">${e.skipped ? 'Skipped' : TYPE_LABELS[e.type]}</span>
+                <span class="pill${e.done && !e.skipped ? ' green' : ''}">${e.skipped ? 'Skipped' : e.done ? '✓ Done' : TYPE_LABELS[e.type]}</span>
               </article>`).join('')
           : '<div class="empty">Nothing on this day.</div>');
+    }
+
+    // ---------- AI weekly report ----------
+    const summarySeenKey = 'parentalRewardsSummarySeen';
+
+    function seenSummaryId() {
+      try { return localStorage.getItem(summarySeenKey); } catch (e) { return null; }
+    }
+
+    function renderSummaries() {
+      if (session.role !== 'parent') return;
+      const list = family.summaries || [];
+      const seen = seenSummaryId();
+      const unseen = list.length && list[0].id !== seen;
+      $('#aiSummaryBtn').innerHTML = 'Weekly report' + (unseen ? ' <span class="pill amber" style="margin-left:6px;min-height:20px;padding:2px 8px">New</span>' : '');
+      $('#aiSummaryList').innerHTML = list.length
+        ? list.map((sm) => `
+            <article class="row-item clickable" onclick="openSummary('${sm.id}')">
+              <div class="row-main">
+                <div class="row-title">Week of ${prettyDate(sm.week_start)}</div>
+                <div class="row-meta">${esc(String(sm.summary).slice(0, 110))}...</div>
+              </div>
+              ${sm.id !== seen && sm === list[0] ? '<span class="pill amber">New</span>' : ''}
+            </article>`).join('')
+        : '<div class="empty">No reports yet. One is written every Sunday evening, or write one now.</div>';
+    }
+
+    function openSummary(id) {
+      if (session.role !== 'parent') return;
+      const list = family.summaries || [];
+      const sm = id ? list.find((x) => x.id === id) : list[0];
+      if (!sm) {
+        showModal('Weekly report',
+          `<p>There is no report yet. One is written every Sunday evening, or you can write one now.</p>
+           <p class="meta">Written by AI from the week's goals, challenges, feedback and activities. They are sent to Anthropic's AI service to write it.</p>`,
+          `<button class="btn" type="button" onclick="closeModal(); generateSummary('this')">Write this week's report</button>
+           <button class="btn secondary" type="button" onclick="closeModal(); generateSummary('last')">Last week's</button>`);
+        return;
+      }
+      try { localStorage.setItem(summarySeenKey, sm.id); } catch (e) { /* not important */ }
+      renderSummaries();
+      showModal('Week of ' + prettyDate(sm.week_start),
+        `<p class="meta" style="margin:0 0 10px">${prettyDate(sm.week_start)} to ${prettyDate(sm.week_end)}</p>
+         <div class="note-text">${esc(sm.summary)}</div>
+         <p class="meta" style="margin-top:14px">Written by AI from the week's data. It can make mistakes, so use your own judgement.</p>`,
+        `<button class="btn secondary" type="button" onclick="closeModal()">Close</button>`);
+    }
+
+    async function generateSummary(which) {
+      if (session.role !== 'parent') return;
+      const status = $('#aiStatus');
+      const buttons = $$('[data-aigen]');
+      buttons.forEach((b) => { b.disabled = true; });
+      status.textContent = 'Writing the report. This can take around 15 seconds...';
+      showToast('Writing your weekly report...', null);
+
+      const { data, error } = await db.functions.invoke('weekly-summary', { body: { mode: 'mine', week: which } });
+      buttons.forEach((b) => { b.disabled = false; });
+      hideToast();
+
+      let problem = '';
+      if (error) {
+        problem = error.name === 'FunctionsFetchError'
+          ? 'Could not reach the weekly-summary function. Check it is deployed with exactly that name.'
+          : 'The report failed: ' + (error.message || 'unknown error');
+      } else if (data && data.error) {
+        problem = data.error === 'config'
+          ? 'The AI key has not been added yet. Add ANTHROPIC_API_KEY under Edge Functions, Secrets.'
+          : (data.detail || 'The report could not be written.');
+      }
+      if (problem) {
+        status.textContent = problem;
+        alert(problem);
+        return;
+      }
+      status.textContent = '';
+      await refreshAndRender();
+      const made = (family.summaries || []).find((x) => x.week_start === data.week_start);
+      openSummary(made ? made.id : undefined);
     }
 
     // ---------- overview donut (parents) ----------
@@ -3686,7 +3790,7 @@
       const activeGoals = family.goals.filter((g) => ids.has(g.child_id) && g.status === 'active' && !isWaitingForNextDay(g));
       return {
         points: kids.reduce((sum, c) => sum + c.points, 0),
-        activitiesToday: (family.activities || []).filter((a) => ids.has(a.child_id) && activityOccursOn(a, today) && !isSkippedOn(a, today)).length,
+        activitiesToday: (family.activities || []).filter((a) => ids.has(a.child_id) && activityOccursOn(a, today) && !isSkippedOn(a, today) && !activityDone(a, today)).length,
         goalsToday: activeGoals.filter((g) => g.due_date === today).length,
         overdue: activeGoals.filter((g) => g.due_date < today).length,
         attention: family.requests.filter((r) => ids.has(r.child_id) && r.status === 'waiting').length
@@ -3782,15 +3886,16 @@
       list.innerHTML = events.map((e) => {
         const activity = e.type === 'activity' ? (family.activities || []).find((a) => a.id === e.id) : null;
         const pill = e.skipped ? 'Skipped'
+          : e.done ? '✓ Done'
           : activity && activity.leave_time ? 'Leave ' + fmtTime(activity.leave_time)
           : TYPE_LABELS[e.type];
         return `
-          <article class="row-item clickable"${e.skipped ? ' style="opacity:.6"' : ''} onclick="openCalendarItem('${e.type}', '${e.id}', '${e.date}')">
+          <article class="row-item clickable"${e.skipped || e.done ? ' style="opacity:.6"' : ''} onclick="openCalendarItem('${e.type}', '${e.id}', '${e.date}')">
             <div class="row-main">
-              <div class="row-title">${esc(e.title)}</div>
-              <div class="row-meta">${TYPE_LABELS[e.type]}${e.cont ? ' · ongoing' : ''}${e.skipped ? ' · skipped' : ''}</div>
+              <div class="row-title"${e.skipped || e.done ? ' style="text-decoration:line-through"' : ''}>${esc(e.title)}</div>
+              <div class="row-meta">${TYPE_LABELS[e.type]}${e.cont ? ' · ongoing' : ''}${e.skipped ? ' · skipped' : ''}${e.done && !e.skipped ? ' · finished' : ''}</div>
             </div>
-            <span class="pill${activity && activity.leave_time && !e.skipped ? ' amber' : ''}">${esc(pill)}</span>
+            <span class="pill${e.done && !e.skipped ? ' green' : activity && activity.leave_time && !e.skipped ? ' amber' : ''}">${esc(pill)}</span>
           </article>`;
       }).join('');
     }
@@ -3814,6 +3919,28 @@
       if (start) return 'from ' + start;
       if (end) return 'until ' + end;
       return '';
+    }
+
+    function nowHM() {
+      const d = new Date();
+      return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    }
+
+    function addMinutesHM(hm, minutes) {
+      const [h, m] = hm.split(':').map(Number);
+      const total = h * 60 + m + minutes;
+      if (total >= 24 * 60) return '23:59';
+      return String(Math.floor(total / 60)).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
+    }
+
+    // Finished: an earlier day, or today once its finish time has passed
+    // (no finish time: one hour after it starts; no times at all: when the day is over)
+    function activityDone(a, date) {
+      const today = todayStr();
+      if (date < today) return true;
+      if (date > today) return false;
+      const end = a.end_time ? fmtTime(a.end_time) : (a.start_time ? addMinutesHM(fmtTime(a.start_time), 60) : null);
+      return end ? nowHM() >= end : false;
     }
 
     function activityOccursOn(a, date) {
@@ -3872,12 +3999,12 @@
             <section class="list">
               <h3 style="margin:6px 0 0;font-size:16px">${esc(dayName(date))}</h3>
               ${items.map((a) => `
-                <article class="row-item clickable"${isSkippedOn(a, date) ? ' style="opacity:.6"' : ''} onclick="openCalendarItem('activity', '${a.id}', '${date}')">
+                <article class="row-item clickable"${isSkippedOn(a, date) || activityDone(a, date) ? ' style="opacity:.6"' : ''} onclick="openCalendarItem('activity', '${a.id}', '${date}')">
                   <div class="row-main">
-                    <div class="row-title">${a.start_time ? esc(fmtTime(a.start_time)) + ' ' : ''}${esc(a.title)}</div>
+                    <div class="row-title"${isSkippedOn(a, date) || activityDone(a, date) ? ' style="text-decoration:line-through"' : ''}>${a.start_time ? esc(fmtTime(a.start_time)) + ' ' : ''}${esc(a.title)}</div>
                     <div class="row-meta">${[isParent ? esc(childName(a.child_id)) : '', timeRange(a) && a.start_time ? esc(timeRange(a)) : '', esc(a.details || '')].filter(Boolean).join(' · ')}</div>
                   </div>
-                  ${isSkippedOn(a, date) ? '<span class="pill">Skipped</span>' : (a.leave_time ? `<span class="pill amber">Leave ${esc(fmtTime(a.leave_time))}</span>` : '')}
+                  ${isSkippedOn(a, date) ? '<span class="pill">Skipped</span>' : activityDone(a, date) ? '<span class="pill green">✓ Done</span>' : (a.leave_time ? `<span class="pill amber">Leave ${esc(fmtTime(a.leave_time))}</span>` : '')}
                 </article>`).join('')}
             </section>`).join('')
         : '<div class="empty">Nothing in the next 7 days.</div>';
@@ -4470,6 +4597,19 @@
     $('#saveFamilyNameBtn').addEventListener('click', renameFamily);
     $('#pushBtn').addEventListener('click', togglePush);
     registerServiceWorker();
+    // A notification tapped while the app is already open
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        const msg = event.data || {};
+        if (msg.type !== 'notification-click' || !session || session.role !== 'parent') return;
+        const params = new URL(msg.url, window.location.href).searchParams;
+        if (params.get('open') === 'summary') openSummary();
+        else if (params.get('tab') === 'requests') jumpTo('attentionSection');
+      });
+    }
+    $('#aiSummaryBtn').addEventListener('click', () => openSummary());
+    $('#aiGenThis').addEventListener('click', () => generateSummary('this'));
+    $('#aiGenLast').addEventListener('click', () => generateSummary('last'));
     $('#challengeCancel').addEventListener('click', cancelEdit);
     $('#goalCancel').addEventListener('click', cancelEdit);
     $$('[data-auth-tab]').forEach((button) => button.addEventListener('click', () => setAuthTab(button.dataset.authTab)));
@@ -4540,6 +4680,14 @@
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 
     setInterval(autoRefresh, 5000);
+    // Activities cross themselves off as their finish time passes
+    setInterval(() => {
+      if (!session || !family || document.hidden) return;
+      renderToday();
+      renderActivities();
+      renderCalendar();
+      if (session.role === 'parent') renderOverview();
+    }, 60000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { lastAutoRefresh = 0; autoRefresh(); } });
 
     // Parent sign-in state comes from Supabase Auth; children use a saved token.
