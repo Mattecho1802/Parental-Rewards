@@ -884,7 +884,7 @@
         <div class="block-head">
           <div>
             <h2>Weekly report</h2>
-            <p class="block-sub">Written by AI from the week's goals, challenges, feedback and activities.</p>
+            <p class="block-sub">A summary of the week's goals, challenges, feedback and activities.</p>
           </div>
         </div>
         <div class="row">
@@ -893,7 +893,7 @@
         </div>
         <p class="meta" id="aiStatus" style="margin:0"></p>
         <div id="aiSummaryList" class="list"></div>
-        <p class="meta" style="margin:0">To write it, the week's names, goals, feedback and activities are sent to Anthropic's AI service. A new report is also written every Sunday evening, and you get a notification when it is ready.</p>
+        <p class="meta" style="margin:0">Reports are written by the app from the week's data. If an AI key has been added, the data is sent to Anthropic's AI service instead, to write it in a friendlier voice. A new report is written every Sunday evening, and you get a notification when it is ready.</p>
       </section>
 
       <section id="summarySection" class="block parent-only" data-view="activity">
@@ -3732,7 +3732,7 @@
       if (!sm) {
         showModal('Weekly report',
           `<p>There is no report yet. One is written every Sunday evening, or you can write one now.</p>
-           <p class="meta">Written by AI from the week's goals, challenges, feedback and activities. They are sent to Anthropic's AI service to write it.</p>`,
+           <p class="meta">A summary of the week's goals, challenges, feedback and activities.</p>`,
           `<button class="btn" type="button" onclick="closeModal(); generateSummary('this')">Write this week's report</button>
            <button class="btn secondary" type="button" onclick="closeModal(); generateSummary('last')">Last week's</button>`);
         return;
@@ -3742,7 +3742,7 @@
       showModal('Week of ' + prettyDate(sm.week_start),
         `<p class="meta" style="margin:0 0 10px">${prettyDate(sm.week_start)} to ${prettyDate(sm.week_end)}</p>
          <div class="note-text">${esc(sm.summary)}</div>
-         <p class="meta" style="margin-top:14px">Written by AI from the week's data. It can make mistakes, so use your own judgement.</p>`,
+         <p class="meta" style="margin-top:14px">${sm.model === 'built-in' ? "Written by the app from the week's data." : "Written by AI from the week's data. It can make mistakes, so use your own judgement."}</p>`,
         `<button class="btn secondary" type="button" onclick="closeModal()">Close</button>`);
     }
 
@@ -3764,9 +3764,7 @@
           ? 'Could not reach the weekly-summary function. Check it is deployed with exactly that name.'
           : 'The report failed: ' + (error.message || 'unknown error');
       } else if (data && data.error) {
-        problem = data.error === 'config'
-          ? 'The AI key has not been added yet. Add ANTHROPIC_API_KEY under Edge Functions, Secrets.'
-          : (data.detail || 'The report could not be written.');
+        problem = data.detail || 'The report could not be written.';
       }
       if (problem) {
         status.textContent = problem;
