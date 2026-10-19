@@ -893,7 +893,7 @@
         </div>
         <p class="meta" id="aiStatus" style="margin:0"></p>
         <div id="aiSummaryList" class="list"></div>
-        <p class="meta" style="margin:0">Reports are written by the app from the week's data. If an AI key has been added, the data is sent to Anthropic's AI service instead, to write it in a friendlier voice. A new report is written every Sunday evening, and you get a notification when it is ready.</p>
+        <p class="meta" style="margin:0">Reports are written by the app from the week's data. If an AI key has been added, the week's data goes to that AI service (Google Gemini or Anthropic) to write it in a friendlier voice. Children are sent as Child A and Child B, and the text of feedback notes is not sent. A new report is written every Sunday evening, and you get a notification when it is ready.</p>
       </section>
 
       <section id="summarySection" class="block parent-only" data-view="activity">
@@ -3775,6 +3775,7 @@
       await refreshAndRender();
       const made = (family.summaries || []).find((x) => x.week_start === data.week_start);
       openSummary(made ? made.id : undefined);
+      if (data.note) showToast(data.note, null);
     }
 
     // ---------- overview donut (parents) ----------
