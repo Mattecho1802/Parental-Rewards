@@ -60,6 +60,7 @@
       --avatar-bg: #dbe7ff;
       --sidebar-bg: #101828;
       --toast-bg: #101828;
+      --c-activity: #d6249f;
     }
 
     /* ---------- themes (chosen in Settings, saved on this device) ---------- */
@@ -75,7 +76,7 @@
       --attention-border: #5a4320; --calm-border: #245a3d; --track: #2a3447; --bar-warn: #e0a030;
       --hover-row: #222d45; --danger-tint: #3a1d22; --danger-border: #6b3039; --cal-other: #121a2b;
       --faint: #6b7689; --muted-strong: #b4bdcc; --avatar-bg: #26365e;
-      --sidebar-bg: #090e18; --toast-bg: #2b3650;
+      --sidebar-bg: #090e18; --toast-bg: #2b3650; --c-activity: #f06ac0;
     }
     :root[data-theme="ocean"] {
       --page: #eef7f9; --line: #d2e3e8; --blue: #0b7285; --blue-dark: #095c6b;
@@ -112,7 +113,7 @@
       --soft: #e8e8e8; --soft-text: #000000; --tint: #e6edff; --tint-border: #0030c0;
       --info-bg: #ffffff; --info-border: #000000; --info-text: #000000; --info-strong: #000000;
       --attention-border: #8a4500; --calm-border: #006b21; --track: #cfcfcf; --bar-warn: #c27000;
-      --cal-other: #f0f0f0; --faint: #444444; --muted-strong: #222222; --sidebar-bg: #000000; --toast-bg: #000000;
+      --cal-other: #f0f0f0; --faint: #444444; --muted-strong: #222222; --sidebar-bg: #000000; --toast-bg: #000000; --c-activity: #a0006e;
     }
 
     * { box-sizing: border-box; }
@@ -562,11 +563,16 @@
     .t-consequence { background: var(--red); }
     .t-reward { background: var(--green); }
     .t-challenge { background: #7c5cff; }
-    .t-activity { background: #0e9aa7; }
+    .t-activity { background: var(--c-activity); }
     .cal-more { font-size: 11px; color: var(--muted); font-weight: 700; }
     .cal-dots { display: none; flex-wrap: wrap; gap: 3px; justify-content: center; pointer-events: none; }
     .cal-dot { min-width: 17px; height: 17px; padding: 0 3px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; line-height: 1; }
     .row-item.clickable { cursor: pointer; }
+    .row-item.k-goal { border-left: 4px solid var(--blue); }
+    .row-item.k-activity { border-left: 4px solid var(--c-activity); }
+    .row-item.k-consequence { border-left: 4px solid var(--red); }
+    .row-item.k-reward { border-left: 4px solid var(--green); }
+    .row-item.k-challenge { border-left: 4px solid #7c5cff; }
     .row-item.clickable:hover { background: var(--hover-row); }
     .progress.mini { height: 8px; margin-top: 6px; }
 
@@ -1083,7 +1089,7 @@
           <button class="chip active" type="button" data-calfilter="goal"><i style="background:var(--blue)"></i>Goals</button>
           <button class="chip active" type="button" data-calfilter="consequence"><i style="background:var(--red)"></i>Consequences</button>
           <button class="chip active" type="button" data-calfilter="reward"><i style="background:var(--green)"></i>Rewards</button>
-          <button class="chip active" type="button" data-calfilter="activity"><i style="background:#0e9aa7"></i>Activities</button>
+          <button class="chip active" type="button" data-calfilter="activity"><i style="background:var(--c-activity)"></i>Activities</button>
           <button class="chip" type="button" data-calfilter="challenge"><i style="background:#7c5cff"></i>Challenges</button>
         </div>
         <div class="cal-grid" id="calGrid"></div>
@@ -3690,7 +3696,7 @@
       $('#calDay').innerHTML = `<h3 style="margin:8px 0 0">${prettyDate(calSelected)}</h3>`
         + (dayItems.length
           ? dayItems.map((e) => `
-              <article class="row-item clickable"${e.skipped || e.done ? ' style="opacity:.6"' : ''} data-cal-item="${e.type}:${e.id}:${e.date}">
+              <article class="row-item clickable k-${e.type}"${e.skipped || e.done ? ' style="opacity:.6"' : ''} data-cal-item="${e.type}:${e.id}:${e.date}">
                 <div class="row-main">
                   <div class="row-title"${e.skipped || e.done ? ' style="text-decoration:line-through"' : ''}>${esc(e.title)}</div>
                   <div class="row-meta">${TYPE_LABELS[e.type]}${e.future ? ' · upcoming' : ''}${e.cont ? ' · ongoing' : ''}${e.skipped ? ' · skipped' : ''}${e.done && !e.skipped ? ' · finished' : ''}</div>
@@ -3702,6 +3708,8 @@
 
     // ---------- AI weekly report ----------
     const summarySeenKey = 'parentalRewardsSummarySeen';
+    const noAiKey = 'parentalRewardsNoAiKey';
+    const aiAttempted = {}; // weeks already tried since this page was opened
 
     function seenSummaryId() {
       try { return localStorage.getItem(summarySeenKey); } catch (e) { return null; }
@@ -3746,7 +3754,30 @@
         `<button class="btn secondary" type="button" onclick="closeModal()">Close</button>`);
     }
 
-    async function generateSummary(which) {
+    // The "Weekly report" button: open the report, but if it is missing or was not written by AI, try AI first
+    async function reportButton() {
+      if (session.role !== 'parent') return;
+      const list = family.summaries || [];
+      const latest = list[0];
+      const isAi = latest && latest.model && latest.model !== 'built-in';
+      let noAi = false;
+      try { noAi = localStorage.getItem(noAiKey) === '1'; } catch (e) { /* ignore */ }
+      if (isAi || noAi) { openSummary(); return; }
+
+      const thisStart = weekRange('this').start;
+      const lastStart = weekRange('last').start;
+      let which = 'this';
+      if (latest) {
+        if (latest.week_start === lastStart) which = 'last';
+        else if (latest.week_start !== thisStart) { openSummary(); return; } // an older report: just open it
+      }
+      const key = which + ':' + (latest ? latest.week_start : 'none');
+      if (aiAttempted[key]) { openSummary(); return; }
+      aiAttempted[key] = true;
+      await generateSummary(which, { fromButton: true });
+    }
+
+    async function generateSummary(which, opts = {}) {
       if (session.role !== 'parent') return;
       const status = $('#aiStatus');
       const buttons = $$('[data-aigen]');
@@ -3768,10 +3799,27 @@
       }
       if (problem) {
         status.textContent = problem;
-        alert(problem);
+        if (opts.fromButton) {
+          if ((family.summaries || []).length) {
+            openSummary();
+            showToast(problem, null);
+          } else {
+            showModal('Weekly report', `<p>${esc(problem)}</p>`, '<button class="btn secondary" type="button" onclick="closeModal()">Close</button>');
+          }
+        } else {
+          alert(problem);
+        }
         return;
       }
-      status.textContent = '';
+      // Remember whether the function found an AI key, so the button does not keep retrying
+      try {
+        if (data.info) localStorage.setItem(noAiKey, '1');
+        else if (!data.note) localStorage.removeItem(noAiKey);
+      } catch (e) { /* ignore */ }
+      // Tell the parent which copy of the function answered and which writer was used
+      status.textContent = data.version !== 3
+        ? 'The weekly-summary function in Supabase is an older version, so it can not use an AI key. Paste in the latest weekly-summary.ts and deploy it.'
+        : (data.info || '');
       await refreshAndRender();
       const made = (family.summaries || []).find((x) => x.week_start === data.week_start);
       openSummary(made ? made.id : undefined);
@@ -3829,7 +3877,7 @@
         { key: 'attention', label: 'Needs attention', value: counts.attention, color: 'var(--bar-warn)' },
         { key: 'overdue', label: 'Overdue goals', value: counts.overdue, color: 'var(--red)' },
         { key: 'goals', label: 'Goals today', value: counts.goalsToday, color: 'var(--blue)' },
-        { key: 'activities', label: 'Activities today', value: counts.activitiesToday, color: '#0e9aa7' }
+        { key: 'activities', label: 'Activities today', value: counts.activitiesToday, color: 'var(--c-activity)' }
       ];
       const total = parts.reduce((sum, p) => sum + p.value, 0);
       const who = overviewChild === 'all' ? (kids.length === 1 ? kids[0].name : 'All children') : childName(overviewChild);
@@ -3889,7 +3937,7 @@
           : activity && activity.leave_time ? 'Leave ' + fmtTime(activity.leave_time)
           : TYPE_LABELS[e.type];
         return `
-          <article class="row-item clickable"${e.skipped || e.done ? ' style="opacity:.6"' : ''} onclick="openCalendarItem('${e.type}', '${e.id}', '${e.date}')">
+          <article class="row-item clickable k-${e.type}"${e.skipped || e.done ? ' style="opacity:.6"' : ''} onclick="openCalendarItem('${e.type}', '${e.id}', '${e.date}')">
             <div class="row-main">
               <div class="row-title"${e.skipped || e.done ? ' style="text-decoration:line-through"' : ''}>${esc(e.title)}</div>
               <div class="row-meta">${TYPE_LABELS[e.type]}${e.cont ? ' · ongoing' : ''}${e.skipped ? ' · skipped' : ''}${e.done && !e.skipped ? ' · finished' : ''}</div>
@@ -3998,7 +4046,7 @@
             <section class="list">
               <h3 style="margin:6px 0 0;font-size:16px">${esc(dayName(date))}</h3>
               ${items.map((a) => `
-                <article class="row-item clickable"${isSkippedOn(a, date) || activityDone(a, date) ? ' style="opacity:.6"' : ''} onclick="openCalendarItem('activity', '${a.id}', '${date}')">
+                <article class="row-item clickable k-activity"${isSkippedOn(a, date) || activityDone(a, date) ? ' style="opacity:.6"' : ''} onclick="openCalendarItem('activity', '${a.id}', '${date}')">
                   <div class="row-main">
                     <div class="row-title"${isSkippedOn(a, date) || activityDone(a, date) ? ' style="text-decoration:line-through"' : ''}>${a.start_time ? esc(fmtTime(a.start_time)) + ' ' : ''}${esc(a.title)}</div>
                     <div class="row-meta">${[isParent ? esc(childName(a.child_id)) : '', timeRange(a) && a.start_time ? esc(timeRange(a)) : '', esc(a.details || '')].filter(Boolean).join(' · ')}</div>
@@ -4606,7 +4654,7 @@
         else if (params.get('tab') === 'requests') jumpTo('attentionSection');
       });
     }
-    $('#aiSummaryBtn').addEventListener('click', () => openSummary());
+    $('#aiSummaryBtn').addEventListener('click', () => reportButton());
     $('#aiGenThis').addEventListener('click', () => generateSummary('this'));
     $('#aiGenLast').addEventListener('click', () => generateSummary('last'));
     $('#challengeCancel').addEventListener('click', cancelEdit);
