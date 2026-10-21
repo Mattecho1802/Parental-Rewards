@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <meta property="og:title" content="Parental Rewards">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://parental-rewards.vercel.app/og-image.jpg">
+  <meta property="og:url" content="https://parental-rewards.vercel.app/">
+  <meta property="og:description" content="Encourage positive behaviour, build healthy habits, and motivate children through rewards and achievements.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Parental Rewards">
+  <meta name="twitter:description" content="Encourage positive behaviour, build healthy habits, and motivate children through rewards and achievements.">
+  <meta name="twitter:image" content="https://parental-rewards.vercel.app/og-image.jpg">
+  <link rel="canonical" href="https://parental-rewards.vercel.app/">
   <link rel="icon" type="image/x-icon" href="favicon.png">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta charset="UTF-8" />
@@ -8,6 +18,7 @@
   <title>Parental Rewards</title>
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#101828" />
+  <meta name="description" content="Parental Rewards helps parents encourage positive behaviour, build healthy habits, and motivate children through rewards, goals, and achievements in a simple, family-friendly app.">
   <script>
     // Apply the saved theme straight away so the page never flashes the wrong colours
     (function () {
@@ -648,6 +659,14 @@
     .list > .row-item.k-challenge { border-left: 3px solid #7c5cff; }
 
     /* secondary actions behind a "..." button */
+    .fold > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 4px 0 8px; }
+    .fold > summary::-webkit-details-marker { display: none; }
+    .fold > summary::after { content: '\25BE'; color: var(--muted); font-size: 16px; transition: transform 0.15s; }
+    .fold:not([open]) > summary::after { transform: rotate(-90deg); }
+    .fold-title { font-size: 20px; font-weight: 700; }
+    .fold-meta { color: var(--muted); font-size: 14px; flex: 1; }
+    .fold-body { display: grid; gap: 10px; }
+
     .more { position: relative; display: inline-block; }
     .more > summary { list-style: none; cursor: pointer; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); font-size: 20px; line-height: 1; font-weight: 700; }
     .more > summary::-webkit-details-marker { display: none; }
@@ -717,7 +736,7 @@
           <div class="brand-mark">PR</div>
           <div>Parental Rewards</div>
         </div>
-        <h1>Family rewards start here.</h1>
+        <h2>Family rewards start here.</h2>
         <p>Parents sign in with an email and password. Children sign in with the family code and their name.</p>
       </div>
 
@@ -948,12 +967,9 @@
       </section>
 
       <section id="goalsSection" class="block" data-view="home">
-        <div class="block-head">
-          <div>
-            <h2>Goals</h2>
-            <p class="block-sub">Things to get done by a deadline.</p>
-          </div>
-        </div>
+        <details id="goalsDetails" class="fold" open>
+        <summary><span class="fold-title">Goals</span><span class="fold-meta" id="goalsMeta"></span></summary>
+        <div class="fold-body">
         <details class="add-panel parent-only">
           <summary>+ Add goal</summary>
           <div class="add-body">
@@ -1006,6 +1022,8 @@
           </div>
         </details>
         <div id="goalList" class="list"></div>
+        </div>
+        </details>
       </section>
 
       <section id="activitiesSection" class="block" data-view="calendar">
@@ -2116,7 +2134,7 @@
       let top = details;
       while (top.parentElement && top.parentElement.tagName !== 'MAIN') top = top.parentElement;
       if (top.dataset.view && mobileView !== top.dataset.view) setMobileView(top.dataset.view);
-      details.open = true;
+      for (let d = details; d; d = d.parentElement ? d.parentElement.closest('details') : null) d.open = true;
       details.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
@@ -2355,6 +2373,11 @@
       const goals = isParent
         ? family.goals
         : family.goals.filter((goal) => goal.child_id === child.id);
+
+      const openGoals = goals.filter((g) => g.status !== 'completed' && !isWaitingForNextDay(g));
+      const overdueGoals = openGoals.filter((g) => g.status === 'active' && g.due_date < todayStr());
+      $('#goalsMeta').innerHTML = (openGoals.length ? openGoals.length + ' open' : 'None open')
+        + (overdueGoals.length ? ' \u00b7 <span style="color:var(--red);font-weight:600">' + overdueGoals.length + ' overdue</span>' : '');
 
       if (!goals.length) {
         list.innerHTML = '<div class="empty">No goals yet.</div>';
@@ -3931,6 +3954,8 @@
       if (!el) return;
       const view = el.dataset.view;
       if (view && mobileView !== view) setMobileView(view);
+      const fold = el.querySelector('details.fold');
+      if (fold) fold.open = true;
       setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
     }
 
@@ -4753,6 +4778,12 @@
       renderOverview();
       renderGoals();
     });
+    const goalsFold = $('#goalsDetails');
+    try { if (localStorage.getItem('parentalRewardsGoalsOpen') === '0') goalsFold.open = false; } catch (e) { /* ignore */ }
+    goalsFold.addEventListener('toggle', () => {
+      try { localStorage.setItem('parentalRewardsGoalsOpen', goalsFold.open ? '1' : '0'); } catch (e) { /* ignore */ }
+    });
+
     // Close an open "..." menu when you tap anywhere else
     document.addEventListener('click', (e) => {
       $$('.more[open]').forEach((menu) => { if (!menu.contains(e.target)) menu.open = false; });
