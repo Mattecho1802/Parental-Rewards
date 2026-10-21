@@ -35,7 +35,7 @@
       --amber: #b95f00;
       --amber-soft: #fff2d8;
       --red: #c03434;
-      --shadow: 0 14px 32px rgba(16, 24, 40, 0.08);
+      --shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
 
       --surface: #ffffff;
       --surface-alt: #fbfcfe;
@@ -69,7 +69,7 @@
       --ink: #e8ecf3; --muted: #9aa5b8; --line: #2a3447; --panel: #161e2d; --page: #0e1420;
       --blue: #4a7af0; --blue-dark: #6b94f5; --green: #2f9e57; --green-soft: #14342a;
       --amber: #c9731a; --amber-soft: #3a2a12; --red: #e05252;
-      --shadow: 0 14px 32px rgba(0, 0, 0, 0.35);
+      --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
       --surface: #1a2336; --surface-alt: #1e283d; --soft: #232e44; --soft-text: #c7cfdd;
       --tint: #1f2c4d; --tint-border: #34466f;
       --info-bg: #16233f; --info-border: #2c4474; --info-text: #b9ccff; --info-strong: #dbe6ff;
@@ -83,28 +83,28 @@
       --surface-alt: #f6fbfc; --soft: #e6f0f3; --tint: #e0f2f5; --tint-border: #9fd3dc;
       --info-bg: #eef9fb; --info-border: #a8dce4; --info-text: #0b4f5c; --info-strong: #063640;
       --track: #dbe8ec; --hover-row: #eaf4f6; --cal-other: #f2f8fa; --avatar-bg: #c9e8ee;
-      --sidebar-bg: #0a3d49; --toast-bg: #0a3d49; --shadow: 0 14px 32px rgba(10, 61, 73, 0.1);
+      --sidebar-bg: #0a3d49; --toast-bg: #0a3d49; --shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
     }
     :root[data-theme="forest"] {
       --page: #f1f7f1; --line: #d4e3d8; --blue: #2e7d4f; --blue-dark: #236540;
       --surface-alt: #f7fbf8; --soft: #e7f0e9; --tint: #e3f1e7; --tint-border: #a9d3b5;
       --info-bg: #f1f9f3; --info-border: #b4dcc0; --info-text: #1d5a37; --info-strong: #123b24;
       --track: #dbe8de; --hover-row: #eaf4ed; --cal-other: #f3f8f4; --avatar-bg: #cfe8d7;
-      --sidebar-bg: #1b3a2a; --toast-bg: #1b3a2a; --shadow: 0 14px 32px rgba(27, 58, 42, 0.1);
+      --sidebar-bg: #1b3a2a; --toast-bg: #1b3a2a; --shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
     }
     :root[data-theme="sunset"] {
       --page: #fff6ef; --line: #ecd9cd; --blue: #d4501e; --blue-dark: #b3410f;
       --surface-alt: #fffaf6; --soft: #f6ebe3; --tint: #ffece1; --tint-border: #f4c3a8;
       --info-bg: #fff6f0; --info-border: #f2c9b1; --info-text: #8a3510; --info-strong: #5e220a;
       --track: #efdfd3; --hover-row: #fbeee5; --cal-other: #fcf3ec; --avatar-bg: #fbd9c4;
-      --sidebar-bg: #4a1f2b; --toast-bg: #4a1f2b; --shadow: 0 14px 32px rgba(74, 31, 43, 0.1);
+      --sidebar-bg: #4a1f2b; --toast-bg: #4a1f2b; --shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
     }
     :root[data-theme="lavender"] {
       --page: #f6f3ff; --line: #e0d9f2; --blue: #6d4de0; --blue-dark: #5a3ccb;
       --surface-alt: #faf8ff; --soft: #eee9fa; --tint: #ece6ff; --tint-border: #cbbdf5;
       --info-bg: #f7f4ff; --info-border: #d3c8f7; --info-text: #4a30a8; --info-strong: #321e80;
       --track: #e4def5; --hover-row: #f0ebfc; --cal-other: #f4f1fc; --avatar-bg: #e0d6ff;
-      --sidebar-bg: #2a1f4d; --toast-bg: #2a1f4d; --shadow: 0 14px 32px rgba(42, 31, 77, 0.1);
+      --sidebar-bg: #2a1f4d; --toast-bg: #2a1f4d; --shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
     }
     :root[data-theme="contrast"] {
       --ink: #000000; --muted: #2b2b2b; --line: #111111; --panel: #ffffff; --page: #ffffff;
@@ -161,7 +161,7 @@
       display: flex;
       align-items: center;
       gap: 12px;
-      font-weight: 800;
+      font-weight: 700;
       font-size: 24px;
     }
 
@@ -380,7 +380,7 @@
       padding: 10px 14px;
       background: var(--blue);
       color: white;
-      font-weight: 800;
+      font-weight: 700;
       text-decoration: none;
       display: inline-flex;
       align-items: center;
@@ -415,7 +415,7 @@
     }
 
     .item-title {
-      font-weight: 800;
+      font-weight: 700;
       font-size: 17px;
     }
 
@@ -434,7 +434,7 @@
       background: var(--soft);
       color: var(--soft-text);
       font-size: 13px;
-      font-weight: 800;
+      font-weight: 700;
       white-space: nowrap;
     }
 
@@ -469,14 +469,14 @@
     .block-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
     .block-head h2 { margin: 0; font-size: 24px; display: flex; align-items: center; gap: 10px; }
     .block-sub { color: var(--muted); font-size: 14px; margin-top: 4px; }
-    .count { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; padding: 0 8px; border-radius: 999px; background: var(--red); color: #fff; font-size: 14px; font-weight: 800; }
+    .count { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; padding: 0 8px; border-radius: 999px; background: var(--red); color: #fff; font-size: 14px; font-weight: 700; }
 
     .attention { background: var(--amber-soft); border: 1px solid var(--attention-border); border-radius: 8px; padding: 18px; }
     .attention.calm { background: var(--green-soft); border-color: var(--calm-border); }
     .attention h3 { font-size: 16px; margin: 4px 0 6px; }
 
     .add-panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
-    .add-panel > summary { cursor: pointer; padding: 10px 14px; font-weight: 800; color: var(--blue); list-style: none; }
+    .add-panel > summary { cursor: pointer; padding: 10px 14px; font-weight: 700; color: var(--blue); list-style: none; }
     .add-panel > summary::-webkit-details-marker { display: none; }
     .add-panel[open] > summary { border-bottom: 1px solid var(--line); }
     .add-body { padding: 16px; max-width: 560px; }
@@ -519,7 +519,7 @@
     .done-list .row-item { margin-top: 8px; }
 
     .history, .settings { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 16px; }
-    .history > summary, .settings > summary { cursor: pointer; font-weight: 800; padding: 12px 0; font-size: 18px; }
+    .history > summary, .settings > summary { cursor: pointer; font-weight: 700; padding: 12px 0; font-size: 18px; }
     .history[open], .settings[open] { padding-bottom: 16px; }
 
     .btn.icon { min-width: 38px; padding: 5px 12px; font-size: 16px; font-weight: 900; line-height: 1; }
@@ -547,12 +547,12 @@
     .chip i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     .chip.active { color: var(--ink); border-color: var(--tint-border); background: var(--tint); }
     .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
-    .cal-dow { text-align: center; font-size: 12px; font-weight: 800; color: var(--muted); padding: 4px 0; }
+    .cal-dow { text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); padding: 4px 0; }
     .cal-cell { min-height: 92px; border: 1px solid var(--line); border-radius: 8px; padding: 4px; background: var(--surface); cursor: pointer; display: flex; flex-direction: column; gap: 3px; overflow: hidden; }
     .cal-cell.other { background: var(--cal-other); color: var(--faint); }
     .cal-cell.today { border-color: var(--blue); }
     .cal-cell.selected { box-shadow: 0 0 0 2px var(--blue) inset; }
-    .cal-num { font-size: 12px; font-weight: 800; }
+    .cal-num { font-size: 12px; font-weight: 700; }
     .cal-chips { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
     .cal-chip { font-size: 11px; font-weight: 700; padding: 2px 5px; border-radius: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; cursor: pointer; }
     .cal-chip.future { opacity: 0.6; }
@@ -566,7 +566,7 @@
     .t-activity { background: var(--c-activity); }
     .cal-more { font-size: 11px; color: var(--muted); font-weight: 700; }
     .cal-dots { display: none; flex-wrap: wrap; gap: 3px; justify-content: center; pointer-events: none; }
-    .cal-dot { min-width: 17px; height: 17px; padding: 0 3px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; line-height: 1; }
+    .cal-dot { min-width: 17px; height: 17px; padding: 0 3px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; line-height: 1; }
     .row-item.clickable { cursor: pointer; }
     .row-item.k-goal { border-left: 4px solid var(--blue); }
     .row-item.k-activity { border-left: 4px solid var(--c-activity); }
@@ -619,12 +619,43 @@
     .filter-banner { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; border-radius: 8px; background: var(--tint); border: 1px solid var(--tint-border); font-size: 14px; }
 
     .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 8px; }
-    .theme-option { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 10px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-weight: 800; text-align: left; }
+    .theme-option { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 10px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-weight: 700; text-align: left; }
     .theme-option.active { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue) inset; }
     .swatch { display: flex; width: 100%; height: 34px; border-radius: 6px; overflow: hidden; border: 1px solid rgba(0, 0, 0, 0.15); }
     .swatch i { flex: 1; display: block; }
 
     .mobile-nav { display: none; }
+
+    /* ---------- cleaner, calmer look ---------- */
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    h1 { font-weight: 700; letter-spacing: -0.01em; }
+    .panel, .item, .score-card, .overview { border-radius: 14px; }
+    .btn { border-radius: 10px; font-weight: 600; }
+    .pill { font-weight: 600; }
+    .block-head h2 { font-weight: 700; }
+    .subtitle { font-size: 14px; margin-top: 6px; }
+
+    /* rows sit together in one tidy card with thin dividers */
+    .list:has(> .row-item) { gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+    .list > .row-item { border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; }
+    .list > .row-item:first-child { border-top: 0; border-radius: 14px 14px 0 0; }
+    .list > .row-item:last-child { border-radius: 0 0 14px 14px; }
+    .list > .row-item:only-child { border-radius: 14px; }
+    .list > .row-item.k-goal { border-left: 3px solid var(--blue); }
+    .list > .row-item.k-activity { border-left: 3px solid var(--c-activity); }
+    .list > .row-item.k-consequence { border-left: 3px solid var(--red); }
+    .list > .row-item.k-reward { border-left: 3px solid var(--green); }
+    .list > .row-item.k-challenge { border-left: 3px solid #7c5cff; }
+
+    /* secondary actions behind a "..." button */
+    .more { position: relative; display: inline-block; }
+    .more > summary { list-style: none; cursor: pointer; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); font-size: 20px; line-height: 1; font-weight: 700; }
+    .more > summary::-webkit-details-marker { display: none; }
+    .more > summary:hover, .more[open] > summary { background: var(--soft); }
+    .more-menu { position: absolute; right: 0; top: 38px; z-index: 30; min-width: 150px; display: grid; gap: 2px; padding: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(16, 24, 40, 0.18); }
+    .more-menu .btn { background: transparent; color: var(--ink); justify-content: flex-start; min-height: 36px; border-radius: 8px; width: 100%; }
+    .more-menu .btn:hover { background: var(--soft); }
+    .more-menu .btn.danger-text { color: var(--red); }
 
     @media (max-width: 900px) {
       .mobile-nav {
@@ -634,10 +665,10 @@
       }
       .mobile-nav button {
         flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
-        background: transparent; color: var(--muted); font-size: 12px; font-weight: 800;
+        background: transparent; color: var(--muted); font-size: 12px; font-weight: 700;
         padding: 6px; border-radius: 8px;
       }
-      .mobile-nav button.active { color: var(--blue); background: var(--tint); }
+      .mobile-nav button.active { color: var(--blue); background: transparent; }
       .mobile-nav svg { width: 22px; height: 22px; }
 
       /* Phones: Home shows the dashboard; Settings shows profile, children and family settings */
@@ -654,7 +685,7 @@
       .toast { bottom: 88px; }
       .app-shell main { gap: 16px; padding-top: 16px; }
       .app-shell .block { gap: 10px; }
-      .app-shell .subtitle { display: none; }
+      .app-shell .block-sub { display: none; }
       .app-shell h1 { font-size: 26px; }
       .app-shell .topbar { gap: 10px; }
       .app-shell .score-card { padding: 10px 14px; }
@@ -1327,6 +1358,11 @@
 
     const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+    // Secondary actions (edit, delete, skip) live behind a small "..." button
+    function moreMenu(buttonsHtml) {
+      return `<details class="more"><summary aria-label="More actions">&#8943;</summary><div class="more-menu">${buttonsHtml}</div></details>`;
+    }
+
     function esc(value) {
       return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
@@ -1905,10 +1941,10 @@
         ? 'Give children the family code and their name so they can sign in.'
         : 'Finish challenges, complete goals, and keep track of rewards and consequences.';
 
-      $('#pageTitle').textContent = isParent ? family.family_name + ' Dashboard' : child.name + "'s Dashboard";
-      $('#pageSubtitle').textContent = isParent
-        ? 'Approve what is waiting, set goals and challenges, and manage rewards and consequences.'
-        : 'Keep an eye on your goals, try the optional challenges, and save up for rewards.';
+      const hour = new Date().getHours();
+      const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+      $('#pageTitle').textContent = greeting + ', ' + (isParent ? (session.parentName || 'there') : child.name);
+      $('#pageSubtitle').textContent = prettyDate(todayStr()) + (isParent ? ' · ' + family.family_name : '');
       $('#scoreLabel').textContent = isParent ? 'Family points' : 'My points';
       $('#mobileSettingsLabel').textContent = isParent ? 'Settings' : 'Profile';
       $('#scoreValue').textContent = isParent
@@ -2268,7 +2304,7 @@
 
         const skippedToday = isRecurring(challenge) && isSkippedOn(challenge, today);
         const skipBtn = isRecurring(challenge) && challenge.recurring_days.includes(dow)
-          ? `<button class="btn ghost small" type="button" onclick="setOccurrenceSkipped('challenge', '${challenge.id}', '${today}', ${!skippedToday})">${skippedToday ? 'Restore today' : 'Skip today'}</button>`
+          ? `<button class="btn small" type="button" onclick="setOccurrenceSkipped('challenge', '${challenge.id}', '${today}', ${!skippedToday})">${skippedToday ? 'Restore today' : 'Skip today'}</button>`
           : '';
         const actions = isParent
           ? (skippedToday
@@ -2276,9 +2312,9 @@
               : doneToday(challenge)
                 ? '<span class="pill green">Done today</span>'
                 : approveIconBtn(`approveChallenge('${challenge.id}')`))
-            + skipBtn
-            + `<button class="btn secondary small" type="button" onclick="startEditChallenge('${challenge.id}')">Edit</button>`
-            + `<button class="btn danger small" type="button" onclick="deleteChallenge('${challenge.id}')">Delete</button>`
+            + moreMenu(skipBtn
+              + `<button class="btn small" type="button" onclick="startEditChallenge('${challenge.id}')">Edit</button>`
+              + `<button class="btn small danger-text" type="button" onclick="deleteChallenge('${challenge.id}')">Delete</button>`)
           : (waitingRequest
               ? '<span class="pill amber">Sent</span>'
               : `<button class="btn ghost small" type="button" onclick="sendCompletionRequest('${challenge.id}')">✓ I finished this</button>`);
@@ -2370,9 +2406,11 @@
         if (isParent) {
           if (goal.status === 'waiting') { const d = goalDecision(goal, 'g'); actions += d.buttons; boxes += d.boxes; }
           if (overdue) actions += `<button class="btn danger small" type="button" onclick="applyConsequence('${goal.id}')">Apply consequence</button><button class="btn ghost small" type="button" onclick="ignoreConsequence('${goal.id}')">Ignore consequence</button>`;
-          if (goal.status === 'active' && (goal.recurring_days || []).length && goal.due_date >= todayStr()) actions += `<button class="btn ghost small" type="button" title="Skip this one and move to the next" onclick="setOccurrenceSkipped('goal', '${goal.id}', '${goal.due_date}', true)">Skip this one</button>`;
-          actions += `<button class="btn secondary small" type="button" onclick="startEditGoal('${goal.id}')">Edit</button>`;
-          actions += `<button class="btn secondary small" type="button" onclick="deleteGoal('${goal.id}')">Delete</button>`;
+          let menu = '';
+          if (goal.status === 'active' && (goal.recurring_days || []).length && goal.due_date >= todayStr()) menu += `<button class="btn small" type="button" onclick="setOccurrenceSkipped('goal', '${goal.id}', '${goal.due_date}', true)">Skip this one</button>`;
+          menu += `<button class="btn small" type="button" onclick="startEditGoal('${goal.id}')">Edit</button>`;
+          menu += `<button class="btn small danger-text" type="button" onclick="deleteGoal('${goal.id}')">Delete</button>`;
+          actions += moreMenu(menu);
         } else if (goal.status === 'active' && !upcoming) {
           actions = `<button class="btn warning" type="button" onclick="markGoalDone('${goal.id}')">✓ I completed this goal</button>`;
         }
@@ -2455,7 +2493,7 @@
         }
 
         const actions = isParent
-          ? `<button class="btn secondary small" type="button" onclick="startEditReward('${reward.id}')">Edit</button><button class="btn danger small" type="button" onclick="deleteReward('${reward.id}')">Delete</button>`
+          ? moreMenu(`<button class="btn small" type="button" onclick="startEditReward('${reward.id}')">Edit</button><button class="btn small danger-text" type="button" onclick="deleteReward('${reward.id}')">Delete</button>`)
           : `<button class="btn ${canClaim ? '' : 'secondary'}" type="button" ${canClaim ? '' : 'disabled'} onclick="claimReward('${reward.id}')">Redeem</button>`;
 
         return `
@@ -2511,8 +2549,7 @@
             ${isParent ? `
             <div class="row">
               <button class="btn success" type="button" onclick="resolveConsequence('${c.id}')">Mark resolved</button>
-              <button class="btn secondary" type="button" onclick="startEditConsequence('${c.id}')">Edit</button>
-              <button class="btn danger" type="button" onclick="deleteConsequence('${c.id}')">Delete</button>
+              ${moreMenu(`<button class="btn small" type="button" onclick="startEditConsequence('${c.id}')">Edit</button><button class="btn small danger-text" type="button" onclick="deleteConsequence('${c.id}')">Delete</button>`)}
             </div>` : ''}
           </article>
         `;
@@ -3708,7 +3745,7 @@
 
     // ---------- AI weekly report ----------
     const summarySeenKey = 'parentalRewardsSummarySeen';
-    const noAiKey = 'parentalRewardsNoAiKey';
+    try { localStorage.removeItem('parentalRewardsNoAiKey'); } catch (e) { /* an old setting that is no longer used */ }
     const aiAttempted = {}; // weeks already tried since this page was opened
 
     function seenSummaryId() {
@@ -3760,9 +3797,7 @@
       const list = family.summaries || [];
       const latest = list[0];
       const isAi = latest && latest.model && latest.model !== 'built-in';
-      let noAi = false;
-      try { noAi = localStorage.getItem(noAiKey) === '1'; } catch (e) { /* ignore */ }
-      if (isAi || noAi) { openSummary(); return; }
+      if (isAi) { openSummary(); return; }
 
       const thisStart = weekRange('this').start;
       const lastStart = weekRange('last').start;
@@ -3811,11 +3846,7 @@
         }
         return;
       }
-      // Remember whether the function found an AI key, so the button does not keep retrying
-      try {
-        if (data.info) localStorage.setItem(noAiKey, '1');
-        else if (!data.note) localStorage.removeItem(noAiKey);
-      } catch (e) { /* ignore */ }
+
       // Tell the parent which copy of the function answered and which writer was used
       status.textContent = data.version !== 3
         ? 'The weekly-summary function in Supabase is an older version, so it can not use an AI key. Paste in the latest weekly-summary.ts and deploy it.'
@@ -4065,7 +4096,7 @@
                 <div class="row-title">${esc(a.title)}</div>
                 <div class="row-meta">${[isParent ? esc(childName(a.child_id)) : '', esc(activitySchedule(a)), esc(timeRange(a)), a.leave_time ? 'leave by ' + esc(fmtTime(a.leave_time)) : ''].filter(Boolean).join(' · ')}</div>
               </div>
-              ${isParent ? `<div class="row-actions"><button class="btn secondary small" type="button" onclick="startEditActivity('${a.id}')">Edit</button><button class="btn secondary small" type="button" onclick="deleteActivity('${a.id}')">Delete</button></div>` : ''}
+              ${isParent ? `<div class="row-actions">${moreMenu(`<button class="btn small" type="button" onclick="startEditActivity('${a.id}')">Edit</button><button class="btn small danger-text" type="button" onclick="deleteActivity('${a.id}')">Delete</button>`)}</div>` : ''}
             </article>`).join('')
         : '<div class="empty">No activities yet.</div>';
     }
@@ -4721,6 +4752,10 @@
       if (goalFilter) goalFilter.childId = overviewChild;
       renderOverview();
       renderGoals();
+    });
+    // Close an open "..." menu when you tap anywhere else
+    document.addEventListener('click', (e) => {
+      $$('.more[open]').forEach((menu) => { if (!menu.contains(e.target)) menu.open = false; });
     });
     $('#modalClose').addEventListener('click', closeModal);
     $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
