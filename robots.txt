@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://parental-rewards.vercel.app/sitemap.xml
