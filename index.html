@@ -199,6 +199,14 @@
         </div>
       </header>
 
+      <section id="widgetsSection" class="block hidden" data-view="home">
+        <div class="block-head">
+          <h2>Widgets</h2>
+          <button class="btn ghost small" type="button" onclick="openWidgetEditor()">Customise</button>
+        </div>
+        <div id="widgetGrid" class="widget-grid"></div>
+      </section>
+
       <section id="overviewSection" class="block parent-only" data-view="home">
         <div class="block-head">
           <h2>Overview</h2>
@@ -308,11 +316,16 @@
                 <label><input type="checkbox" value="0" /> Sun</label>
               </div>
             </div>
-            <div class="field hidden" id="goalRotateBox">Chore rotation
-              <div class="day-picker">
-                <label><input type="checkbox" id="goalRotate" /> Take turns: pass it to the next ticked child each time it is approved</label>
-              </div>
-            </div>
+            <label class="hidden" id="goalRotateBox">How is it shared between them?
+              <select id="goalRotateMode">
+                <option value="">Each ticked child gets their own</option>
+                <option value="each">Take turns: next child each time it is done</option>
+                <option value="week">Take turns: swap every week</option>
+                <option value="2weeks">Take turns: swap every 2 weeks</option>
+                <option value="month">Take turns: swap every month</option>
+              </select>
+              <span class="meta" id="goalRotateNote"></span>
+            </label>
             <div class="field hidden" id="goalSkipBox">Skipped days
               <div id="goalSkipList" class="list"></div>
             </div>
@@ -343,6 +356,7 @@
             <div class="field">Proof
               <div class="day-picker">
                 <label><input type="checkbox" id="goalRequirePhoto" /> Ask for a photo as proof (AI checks it)</label>
+                <label><input type="checkbox" id="goalAiAuto" /> AI verification: approve it automatically when the photo clearly shows it done</label>
               </div>
             </div>
             <button class="btn" id="goalSubmit" type="submit">Create goal</button>
@@ -640,6 +654,17 @@
         <summary>Theme</summary>
         <p class="meta">Pick how the app looks. This is saved on this device only.</p>
         <div class="theme-grid" id="themeGrid"></div>
+      </details>
+      <details id="widgetSettings" class="settings" data-view="settings">
+        <summary>Widgets &amp; help</summary>
+        <div class="form-grid" style="margin-top:12px">
+          <div class="day-picker">
+            <label><input type="checkbox" id="widgetsToggle" onchange="setWidgetsEnabled(this.checked)" /> Show widgets at the top of my dashboard</label>
+          </div>
+          <p class="meta">Choose which widgets you see, their order and their size. Saved on this device.</p>
+          <button class="btn secondary" type="button" onclick="openWidgetEditor()">Customise widgets</button>
+          <button class="btn secondary" type="button" onclick="startTutorial()">Show the tutorial again</button>
+        </div>
       </details>
     </main>
 
