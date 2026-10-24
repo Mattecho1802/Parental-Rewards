@@ -3,13 +3,16 @@
 <head>
   <meta property="og:title" content="Parental Rewards">
   <meta property="og:type" content="website">
-  <meta property="og:image" content="https://parental-rewards.vercel.app/og-image.jpg">
+  <meta property="og:image" content="https://parental-rewards.vercel.app/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Parental Rewards: family goals, challenges and rewards in one place">
   <meta property="og:url" content="https://parental-rewards.vercel.app/">
   <meta property="og:description" content="Encourage positive behaviour, build healthy habits and motivate children through rewards and achievements.">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Parental Rewards">
   <meta name="twitter:description" content="Encourage positive behaviour, build healthy habits and motivate children through rewards and achievements.">
-  <meta name="twitter:image" content="https://parental-rewards.vercel.app/og-image.jpg">
+  <meta name="twitter:image" content="https://parental-rewards.vercel.app/og-image.png">
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -194,10 +197,6 @@
           <h1 id="pageTitle">Family Dashboard</h1>
           <p class="subtitle" id="pageSubtitle"></p>
         </div>
-        <div class="score-card">
-          <span id="scoreLabel">Family points</span>
-          <strong id="scoreValue">0</strong>
-        </div>
       </header>
 
       <section id="overviewSection" class="block parent-only" data-view="home">
@@ -293,14 +292,11 @@
             <h3 id="goalFormTitle">Add goal</h3>
             <form id="goalForm" class="form-grid">
             <label>Goal name
-              <input id="goalName" required placeholder="Finish homework by Friday" />
+              <input id="goalName" required placeholder="E.g. Finish homework" />
             </label>
             <div class="field">Assign to
               <div class="day-picker" id="goalChildren"></div>
             </div>
-            <label>Due date <span id="goalDueNote" class="meta"></span>
-              <input id="goalDueDate" type="date" required />
-            </label>
             <div class="field">Repeat on (leave all unticked for one-time)
               <div class="day-picker" id="goalDays">
                 <label><input type="checkbox" value="1" /> Mon</label>
@@ -315,8 +311,12 @@
             <div class="field hidden" id="goalSkipBox">Skipped days
               <div id="goalSkipList" class="list"></div>
             </div>
+            <label>Due date <span id="goalDueNote" class="meta"></span>
+              <input id="goalDueDate" type="date" required />
+            </label>
             <label>Consequence
-              <select id="goalConsequenceChoice">
+              <select id="goalConsequenceChoice" required>
+                <option value="" disabled selected>Please select</option>
                 <option value="No screens">No screens</option>
                 <option value="Early bedtime">Early bedtime</option>
                 <option value="No dessert or treats">No dessert or treats</option>
@@ -324,7 +324,7 @@
               </select>
             </label>
             <label id="goalConsequenceOtherWrap" class="hidden">Your own consequence
-              <input id="goalConsequence" maxlength="200" placeholder="e.g. No game time until it is done" />
+              <input id="goalConsequence" maxlength="200" placeholder="E.g. No game time until it is done" />
             </label>
             <label>Consequence lasts (days) <span class="meta">(optional)</span>
               <input id="goalConsequenceDays" type="number" min="1" step="1" placeholder="Leave empty for no end date" />
@@ -359,7 +359,7 @@
                 <div class="day-picker" id="activityChildren"></div>
               </div>
               <label>Activity
-                <input id="activityTitle" required maxlength="120" placeholder="Football training" />
+                <input id="activityTitle" required maxlength="120" placeholder="E.g. Football training" />
               </label>
               <label>Date <span class="meta" id="activityDateNote"></span>
                 <input id="activityDate" type="date" required />
@@ -390,7 +390,7 @@
                 </label>
               </div>
               <label>Extra details
-                <textarea id="activityDetails" placeholder="e.g. Bring boots and a water bottle. Pitch 3."></textarea>
+                <textarea id="activityDetails" placeholder="E.g. Bring boots and a water bottle. Pitch 3."></textarea>
               </label>
               <button class="btn" id="activitySubmit" type="submit">Add activity</button>
               <button class="btn secondary hidden" id="activityCancel" type="button">Cancel edit</button>
@@ -399,10 +399,6 @@
           </div>
         </details>
         <div id="activityUpcoming" class="list"></div>
-        <details class="done-list" id="activityAll">
-          <summary id="activityAllSummary">All activities</summary>
-          <div id="activityList" class="list" style="margin-top:8px"></div>
-        </details>
       </section>
 
       <section id="feedbackSection" class="block" data-view="home">
@@ -428,7 +424,7 @@
                 </select>
               </label>
               <label>Message
-                <textarea id="feedbackMessage" required maxlength="500" placeholder="e.g. Great job tidying your room without being asked!"></textarea>
+                <textarea id="feedbackMessage" required maxlength="500" placeholder="E.g. Great job tidying your room without being asked!"></textarea>
               </label>
               <button class="btn" type="submit">Send feedback</button>
               <p id="feedbackError" class="error"></p>
@@ -475,7 +471,8 @@
               <div class="day-picker" id="consequenceChildren"></div>
             </div>
             <label>Consequence
-              <select id="consequenceChoice">
+              <select id="consequenceChoice" required>
+                <option value="" disabled selected>Please select</option>
                 <option value="No screens">No screens</option>
                 <option value="Early bedtime">Early bedtime</option>
                 <option value="No dessert or treats">No dessert or treats</option>
@@ -483,7 +480,7 @@
               </select>
             </label>
             <label id="consequenceOtherWrap" class="hidden">Your own consequence
-              <input id="consequenceName" maxlength="200" placeholder="e.g. No tablet" />
+              <input id="consequenceName" maxlength="200" placeholder="E.g. No tablet" />
             </label>
             <label>Lasts (days) <span class="meta">(optional)</span>
               <input id="consequenceDays" type="number" min="1" step="1" placeholder="Leave empty for no end date" />
@@ -513,7 +510,7 @@
             <h3 id="challengeFormTitle">Add challenge</h3>
             <form id="challengeForm" class="form-grid">
             <label>Challenge name
-              <input id="challengeName" required placeholder="Read for 20 minutes" />
+              <input id="challengeName" required placeholder="E.g. Read for 20 minutes" />
             </label>
             <label>Points
               <input id="challengePoints" type="number" min="1" required value="10" />
@@ -557,7 +554,7 @@
             <h3 id="rewardFormTitle">Add reward</h3>
             <form id="rewardForm" class="form-grid">
             <label>Reward name
-              <input id="rewardName" required placeholder="Movie night" />
+              <input id="rewardName" required placeholder="E.g. Movie night" />
             </label>
             <div class="row">
               <label style="flex:1">Points needed
