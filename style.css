@@ -692,3 +692,45 @@
       .score-card { width: 100%; }
       .span-5, .span-7 { grid-column: span 12; }
     }
+
+
+    /* ---------- "..." menus never leave the screen ---------- */
+    .more-menu { max-width: calc(100vw - 16px); }
+
+    /* ---------- widgets ---------- */
+    .widget-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .widget {
+      background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
+      padding: 12px 14px; display: grid; gap: 2px; align-content: start; min-width: 0; cursor: pointer;
+    }
+    .widget:hover, .widget:focus-visible { border-color: var(--tint-border); background: var(--surface-alt); outline: none; }
+    .widget.w-wide { grid-column: span 2; }
+    .widget-title { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; overflow-wrap: anywhere; }
+    .widget-value { font-size: 28px; font-weight: 800; line-height: 1.15; color: var(--ink); overflow-wrap: anywhere; }
+    .widget.tone-warn .widget-value { color: var(--amber); }
+    .widget.tone-bad .widget-value { color: var(--red); }
+    .widget-sub { color: var(--muted-strong); font-size: 13px; overflow-wrap: anywhere; }
+    .widget-lines { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+    .widget-lines li { overflow-wrap: anywhere; }
+    .widget-quote { margin-top: 6px; font-size: 13px; color: var(--soft-text); font-style: italic; overflow-wrap: anywhere; }
+    .w-dim { color: var(--muted); }
+    .w-bad { color: var(--red); font-weight: 700; }
+    .widget-edit-list { display: grid; gap: 6px; max-height: 55vh; overflow-y: auto; }
+    .widget-edit-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; }
+    .widget-edit-name { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+    .widget-edit-name input { width: auto; }
+    .widget-edit-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .widget-edit-controls select { width: auto; min-height: 34px; padding: 4px 8px; }
+    @media (max-width: 900px) {
+      .widget-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .widget-value { font-size: 24px; }
+    }
+
+    /* ---------- tutorial ---------- */
+    .tutorial { text-align: center; display: grid; gap: 10px; justify-items: center; }
+    .tutorial p { margin: 0; color: var(--soft-text); line-height: 1.5; max-width: 420px; }
+    .tut-icon { font-size: 48px; line-height: 1; }
+    .tut-code { background: var(--tint); border: 1px solid var(--tint-border); border-radius: 10px; padding: 8px 12px; }
+    .tut-dots { display: flex; gap: 6px; margin-top: 4px; }
+    .tut-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--track); }
+    .tut-dot.on { background: var(--blue); }
