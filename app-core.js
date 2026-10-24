@@ -69,7 +69,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
 
     // First date on/after today that falls on one of the selected weekdays
     function firstOccurrence(days, skips = []) {
-      for (let i = 0; i <= 60; i++) {
+      for (let i = 0; i <= 400; i++) {
         const d = new Date();
         d.setDate(d.getDate() + i);
         const str = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -269,7 +269,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
     // If that has already passed, start from today instead.
     function nextRecurringDate(days, afterDate, skips = []) {
       let cursor = afterDate;
-      for (let step = 0; step < 60; step++) {
+      for (let step = 0; step < 400; step++) {
         let next = null;
         for (let i = 1; i <= 7; i++) {
           const candidate = addDays(cursor, i);
@@ -606,18 +606,14 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
       const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
       $('#pageTitle').textContent = greeting + ', ' + (isParent ? (session.parentName || 'there') : child.name);
       $('#pageSubtitle').textContent = prettyDate(todayStr()) + (isParent ? ' · ' + family.family_name : '');
-      $('#scoreLabel').textContent = isParent ? 'Family points' : 'My points';
       $('#mobileSettingsLabel').textContent = isParent ? 'Settings' : 'Profile';
-      $('#scoreValue').textContent = isParent
-        ? family.children.reduce((sum, kid) => sum + kid.points, 0)
-        : child.points;
 
       $$('.parent-only').forEach((item) => item.classList.toggle('hidden', !isParent));
 
       // One page, no tabs: show the sections in order of importance for who is signed in
       const order = isParent
-        ? { overviewSection: -2, todaySection: -1, attentionSection: 0, childrenSection: 1, goalsSection: 2, activitiesSection: 3, feedbackSection: 4, calendarSection: 5, consequenceSection: 6, challengesSection: 7, rewardsSection: 8, aiSummarySection: 9, summarySection: 10, historySection: 11, settingsSection: 12, themeSection: 13 }
-        : { todaySection: -1, feedbackSection: 0, consequenceSection: 1, goalsSection: 2, activitiesSection: 3, calendarSection: 4, challengesSection: 5, rewardsSection: 6, historySection: 7, themeSection: 8 };
+        ? { overviewSection: -2, todaySection: -1, attentionSection: 0, childrenSection: 1, goalsSection: 2, calendarSection: 3, activitiesSection: 4, feedbackSection: 5, consequenceSection: 6, challengesSection: 7, rewardsSection: 8, aiSummarySection: 9, summarySection: 10, historySection: 11, settingsSection: 12, themeSection: 13 }
+        : { todaySection: -1, feedbackSection: 0, consequenceSection: 1, goalsSection: 2, calendarSection: 3, activitiesSection: 4, challengesSection: 5, rewardsSection: 6, historySection: 7, themeSection: 8 };
       Object.entries(order).forEach(([id, position]) => { $('#' + id).style.order = position; });
       // Children have no Activity page, so their history sits on their Profile page
       $('#historySection').dataset.view = isParent ? 'activity' : 'settings';
@@ -967,13 +963,16 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
         const skipBtn = isRecurring(challenge) && challenge.recurring_days.includes(dow)
           ? `<button class="btn small" type="button" onclick="setOccurrenceSkipped('challenge', '${challenge.id}', '${today}', ${!skippedToday})">${skippedToday ? 'Restore today' : 'Skip today'}</button>`
           : '';
+        const periodBtn = isRecurring(challenge)
+          ? `<button class="btn small" type="button" onclick="openSkipPeriod('challenge', '${challenge.id}')">Skip a period...</button>`
+          : '';
         const actions = isParent
           ? (skippedToday
               ? '<span class="pill">Skipped today</span>'
               : doneToday(challenge)
                 ? '<span class="pill green">Done today</span>'
                 : approveIconBtn(`approveChallenge('${challenge.id}')`))
-            + moreMenu(skipBtn
+            + moreMenu(skipBtn + periodBtn
               + `<button class="btn small" type="button" onclick="startEditChallenge('${challenge.id}')">Edit</button>`
               + `<button class="btn small danger-text" type="button" onclick="deleteChallenge('${challenge.id}')">Delete</button>`)
           : (waitingRequest
@@ -1074,6 +1073,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
           if (overdue) actions += `<button class="btn danger small" type="button" onclick="applyConsequence('${goal.id}')">Apply consequence</button><button class="btn ghost small" type="button" onclick="ignoreConsequence('${goal.id}')">Ignore consequence</button>`;
           let menu = '';
           if (goal.status === 'active' && (goal.recurring_days || []).length && goal.due_date >= todayStr()) menu += `<button class="btn small" type="button" onclick="setOccurrenceSkipped('goal', '${goal.id}', '${goal.due_date}', true)">Skip this one</button>`;
+          if (goal.status === 'active' && (goal.recurring_days || []).length && goal.due_date >= todayStr()) menu += `<button class="btn small" type="button" onclick="openSkipPeriod('goal', '${goal.id}')">Skip a period...</button>`;
           menu += `<button class="btn small" type="button" onclick="startEditGoal('${goal.id}')">Edit</button>`;
           menu += `<button class="btn small danger-text" type="button" onclick="deleteGoal('${goal.id}')">Delete</button>`;
           actions += moreMenu(menu);
