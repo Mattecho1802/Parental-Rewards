@@ -16,7 +16,12 @@ async function ignoreConsequence(goalId) {
       if (!goal) return;
       const days = goal.recurring_days || [];
       if (days.length > 0) {
-        await db.from('goals').update({ status: 'active', due_date: nextRecurringDate(days, goal.due_date, goal.skip_dates || []) }).eq('id', goalId);
+        const nextKid = nextRotationChildId(goal);
+        await db.from('goals').update({
+          status: 'active',
+          due_date: nextRecurringDate(days, goal.due_date, goal.skip_dates || []),
+          ...(nextKid ? { child_id: nextKid } : {})
+        }).eq('id', goalId);
       } else {
         await db.from('goals').update({ status: 'completed' }).eq('id', goalId);
       }
@@ -41,6 +46,7 @@ async function ignoreConsequence(goalId) {
         alert(error.message);
         return;
       }
+      await discardPhotos([goal.photo_path]);
       await refreshAndRender();
       if (data) showToast('Approved: ' + goal.name, data);
     }
@@ -261,6 +267,167 @@ async function ignoreConsequence(goalId) {
       applyTheme();
     }
 
+    // ---------- chore rotation ----------
+    // The child who gets a repeating chore after this one (null when it does not rotate)
+    function nextRotationChildId(goal) {
+      const ids = (goal.rotation_child_ids || []).filter((cid) => family.children.some((k) => k.id === cid));
+      if (ids.length < 2) return null;
+      const pos = ids.indexOf(goal.child_id);
+      return ids[(pos + 1) % ids.length];
+    }
+
+    // The "Take turns" tick only makes sense for a repeating goal with two or more children
+    function updateGoalRotateState() {
+      const box = $('#goalRotateBox');
+      if (!box) return;
+      const kids = $$('#goalChildren input[data-child]:checked').length;
+      const repeats = $$('#goalDays input:checked').length > 0;
+      const show = kids >= 2 && repeats;
+      box.classList.toggle('hidden', !show);
+      if (!show) $('#goalRotate').checked = false;
+    }
+
+    // ---------- photo proof ----------
+    let pendingPhoto = null; // { kind, id, base64 }
+
+    async function discardPhotos(paths) {
+      const list = (paths || []).filter(Boolean);
+      if (!list.length) return;
+      try { await db.storage.from('task-photos').remove(list); } catch (e) { /* it can be removed later */ }
+    }
+
+    function aiBadge(verdict) {
+      const map = {
+        looks_done: ['green', 'AI: looks done'],
+        unclear: ['amber', 'AI: not sure'],
+        doesnt_match: ['amber', "AI: doesn't match"],
+        unchecked: ['', 'AI: not checked']
+      };
+      const m = map[verdict];
+      return m ? `<span class="pill ${m[0]}">${m[1]}</span>` : '';
+    }
+
+    // Shown to parents on a request that came with a photo
+    function proofBlock(item) {
+      if (!item || !item.photo_path) return '';
+      return `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px">
+          <button class="btn ghost small" type="button" onclick="viewProof('${esc(item.photo_path)}')">📷 View photo</button>
+          ${aiBadge(item.ai_verdict)}
+        </div>
+        ${item.ai_note ? `<div class="meta" style="margin-top:4px">${esc(item.ai_note)}</div>` : ''}`;
+    }
+
+    async function viewProof(path) {
+      if (session.role !== 'parent') return;
+      const { data, error } = await db.storage.from('task-photos').createSignedUrl(path, 300);
+      if (error || !data) {
+        alert('The photo could not be opened. It may already have been deleted.');
+        return;
+      }
+      const item = family.goals.find((g) => g.photo_path === path) || family.requests.find((r) => r.photo_path === path);
+      showModal('Photo proof',
+        `<img src="${esc(data.signedUrl)}" alt="Photo sent by your child" style="width:100%;border-radius:12px" />
+         ${item ? `<div style="margin-top:10px">${aiBadge(item.ai_verdict)}</div>${item.ai_note ? `<p class="meta">${esc(item.ai_note)}</p>` : ''}` : ''}
+         <p class="meta">The AI is only a helper. The photo is deleted when you approve it or send it back.</p>`,
+        `<button class="btn secondary" type="button" onclick="closeModal()">Close</button>`);
+    }
+
+    function setPhotoStatus(text) {
+      const el = $('#photoStatus');
+      if (el) el.textContent = text || '';
+    }
+
+    function openPhotoModal(kind, id) {
+      const item = (kind === 'goal' ? family.goals : family.challenges).find((x) => x.id === id);
+      if (!item) return;
+      pendingPhoto = { kind, id, base64: null };
+      showModal('Show it is done',
+        `<p class="meta" style="margin:0 0 10px">Take a photo of <strong>${esc(item.name)}</strong> done. A helper checks it, then your parent makes the final decision.</p>
+         <input id="photoInput" type="file" accept="image/*" capture="environment" onchange="photoChosen(this)" />
+         <img id="photoPreview" class="hidden" alt="Your photo" style="width:100%;max-height:300px;object-fit:contain;border-radius:12px;margin-top:10px" />
+         <p id="photoStatus" class="meta" style="margin:10px 0 0"></p>`,
+        `<button class="btn" id="photoSend" type="button" onclick="submitPhoto(false)" disabled>Send photo</button>
+         <button class="btn secondary" type="button" onclick="closeModal()">Cancel</button>`);
+    }
+
+    // Shrinks the photo so it uploads quickly (data: URLs only, the page does not allow blob: images)
+    function compressImage(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('unreadable'));
+        reader.onload = () => {
+          const img = new Image();
+          img.onerror = () => reject(new Error('unreadable'));
+          img.onload = () => {
+            const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(img.width * scale));
+            canvas.height = Math.max(1, Math.round(img.height * scale));
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', 0.72));
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function photoChosen(input) {
+      const file = input.files && input.files[0];
+      if (!file || !pendingPhoto) return;
+      setPhotoStatus('Getting your photo ready...');
+      try {
+        const dataUrl = await compressImage(file);
+        pendingPhoto.base64 = dataUrl.split(',')[1];
+        const preview = $('#photoPreview');
+        preview.src = dataUrl;
+        preview.classList.remove('hidden');
+        $('#photoSend').disabled = false;
+        setPhotoStatus('');
+      } catch (e) {
+        pendingPhoto.base64 = null;
+        $('#photoSend').disabled = true;
+        setPhotoStatus('That photo could not be opened. Please take another.');
+      }
+    }
+
+    function retakePhoto() {
+      if (pendingPhoto) openPhotoModal(pendingPhoto.kind, pendingPhoto.id);
+    }
+
+    async function submitPhoto(force) {
+      if (!pendingPhoto || !pendingPhoto.base64) return;
+      const send = $('#photoSend');
+      if (send) send.disabled = true;
+      setPhotoStatus('Checking your photo...');
+      const { data, error } = await db.functions.invoke('verify-photo', {
+        body: { token: session.token, kind: pendingPhoto.kind, item_id: pendingPhoto.id, image: pendingPhoto.base64, force: !!force }
+      });
+      if (error || !data) {
+        setPhotoStatus('The photo could not be sent. Check your connection and try again.');
+        if (send) send.disabled = false;
+        return;
+      }
+      if (data.error) {
+        setPhotoStatus(data.error);
+        if (send) send.disabled = false;
+        return;
+      }
+      if (data.needs_confirm) {
+        setPhotoStatus((data.note || 'I am not sure that photo shows it done.') + ' Take another, or send it to your parent anyway.');
+        $('#modalActions').innerHTML =
+          `<button class="btn" type="button" onclick="retakePhoto()">Retake photo</button>
+           <button class="btn secondary" type="button" onclick="submitPhoto(true)">Send anyway</button>`;
+        return;
+      }
+      pendingPhoto = null;
+      showModal('Sent!',
+        `<p style="margin:0">Your parent will take a look.</p>${data.note ? `<p class="meta">${esc(data.note)}</p>` : ''}`,
+        `<button class="btn" type="button" onclick="closeModal()">Done</button>`);
+      activeTab = 'requests';
+      await refreshAndRender();
+    }
+
     // ---------- modal ----------
     function showModal(title, bodyHtml, actionsHtml) {
       $('#modalTitle').textContent = title;
@@ -294,7 +461,7 @@ async function ignoreConsequence(goalId) {
         fill = 0; label = 'Next one starts ' + (p.daysLeft === 1 ? 'tomorrow' : 'in ' + p.daysLeft + ' days');
       } else {
         tone = p.pct >= 85 ? 'bad' : p.pct >= 60 ? 'warn' : 'ok';
-        label = p.daysLeft === 0 ? 'Due today, ends tonight' : p.daysLeft === 1 ? '1 day left' : p.daysLeft + ' days left';
+        label = p.daysLeft === 0 ? (goal.due_time ? 'Due today at ' + fmtTime(goal.due_time) : 'Due today, ends tonight') : p.daysLeft === 1 ? '1 day left' : p.daysLeft + ' days left';
       }
       return { tone, fill, label };
     }
@@ -1524,10 +1691,16 @@ async function ignoreConsequence(goalId) {
     async function approveChallenge(challengeId) {
       if (session.role !== 'parent') return;
       const challenge = family.challenges.find((c) => c.id === challengeId);
+      const waiting = family.requests.filter((r) => r.challenge_id === challengeId && r.status === 'waiting');
       const { data, error } = await db.rpc('approve_challenge', { p_challenge_id: challengeId, p_today: todayStr() });
       if (error) {
         alert(error.message);
         return;
+      }
+      const photos = waiting.map((r) => r.photo_path).filter(Boolean);
+      if (photos.length) {
+        await db.from('completion_requests').update({ photo_path: null }).in('id', waiting.map((r) => r.id));
+        await discardPhotos(photos);
       }
       await refreshAndRender();
       if (data) showToast('Approved: ' + (challenge ? challenge.name : 'challenge'), data);
@@ -1547,6 +1720,7 @@ async function ignoreConsequence(goalId) {
       if (session.role !== 'parent') return;
       if (!confirm('Delete this challenge? This cannot be undone.')) return;
       // Clear any pending request so it doesn't linger in the Requests tab
+      await discardPhotos(family.requests.filter((r) => r.challenge_id === challengeId).map((r) => r.photo_path));
       await db.from('completion_requests').delete().eq('challenge_id', challengeId).eq('status', 'waiting');
       await db.from('challenges').delete().eq('id', challengeId);
       await refreshAndRender();
@@ -1555,6 +1729,7 @@ async function ignoreConsequence(goalId) {
     async function deleteGoal(goalId) {
       if (session.role !== 'parent') return;
       if (!confirm('Delete this goal? This cannot be undone.')) return;
+      await discardPhotos([(family.goals.find((g) => g.id === goalId) || {}).photo_path]);
       await db.from('goals').delete().eq('id', goalId);
       await refreshAndRender();
     }
@@ -1608,6 +1783,8 @@ async function ignoreConsequence(goalId) {
     $$('[data-auth-tab]').forEach((button) => button.addEventListener('click', () => setAuthTab(button.dataset.authTab)));
     $$('[data-onboard-tab]').forEach((button) => button.addEventListener('click', () => setOnboardTab(button.dataset.onboardTab)));
     $('#goalDays').addEventListener('change', updateGoalDueState);
+    $('#goalDays').addEventListener('change', updateGoalRotateState);
+    $('#goalChildren').addEventListener('change', () => setTimeout(updateGoalRotateState, 0));
     $('#goalConsequenceChoice').addEventListener('change', updateGoalConsequenceUI);
     $('#consequenceChoice').addEventListener('change', updateConsequenceUI);
     updateConsequenceUI();
