@@ -513,6 +513,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
       syncPushSubscription();
       startRealtime();
       if (openParam === 'summary') openSummary();
+      else maybeStartTutorial();
     }
 
     async function enterChild() {
@@ -531,6 +532,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
       activeTab = 'challenges';
       render();
       syncPushSubscription();
+      maybeStartTutorial();
     }
 
     async function startFromAuth(authSession) {
@@ -617,8 +619,8 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
 
       // One page, no tabs: show the sections in order of importance for who is signed in
       const order = isParent
-        ? { overviewSection: -2, todaySection: -1, attentionSection: 0, childrenSection: 1, goalsSection: 2, calendarSection: 3, activitiesSection: 4, feedbackSection: 5, consequenceSection: 6, challengesSection: 7, rewardsSection: 8, aiSummarySection: 9, summarySection: 10, historySection: 11, settingsSection: 12, themeSection: 13 }
-        : { todaySection: -1, feedbackSection: 0, consequenceSection: 1, goalsSection: 2, calendarSection: 3, activitiesSection: 4, challengesSection: 5, rewardsSection: 6, historySection: 7, themeSection: 8 };
+        ? { widgetsSection: -3, overviewSection: -2, todaySection: -1, attentionSection: 0, childrenSection: 1, goalsSection: 2, calendarSection: 3, activitiesSection: 4, feedbackSection: 5, consequenceSection: 6, challengesSection: 7, rewardsSection: 8, aiSummarySection: 9, summarySection: 10, historySection: 11, settingsSection: 12, themeSection: 13, widgetSettings: 14 }
+        : { widgetsSection: -2, todaySection: -1, feedbackSection: 0, consequenceSection: 1, goalsSection: 2, calendarSection: 3, activitiesSection: 4, challengesSection: 5, rewardsSection: 6, historySection: 7, themeSection: 8, widgetSettings: 9 };
       Object.entries(order).forEach(([id, position]) => { $('#' + id).style.order = position; });
       // Children have no Activity page, so their history sits on their Profile page
       $('#historySection').dataset.view = isParent ? 'activity' : 'settings';
@@ -646,6 +648,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
       renderOverview();
       renderSummaries();
       renderToday();
+      renderWidgets();
       updatePushUI();
     }
 
@@ -895,7 +898,8 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
       setDays('goalDays', g.recurring_days || []);
       updateGoalDueState();
       updateGoalRotateState();
-      $('#goalRotate').checked = rotation.length >= 2 && (g.recurring_days || []).length > 0;
+      $('#goalRotateMode').value = rotation.length >= 2 && (g.recurring_days || []).length > 0 ? (g.rotation_every || 'each') : '';
+      $('#goalAiAuto').checked = !!g.ai_auto_approve;
       $('#goalDueTime').value = g.due_time ? String(g.due_time).slice(0, 5) : '';
       $('#goalRequirePhoto').checked = !!g.require_photo;
       $('#goalFormTitle').textContent = 'Edit goal';
@@ -1102,9 +1106,11 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
           isParent ? 'For ' + childName(goal.child_id) : '',
           repeatLabel(goal.recurring_days).trim(),
           (goal.rotation_child_ids || []).length > 1
-            ? (isParent ? 'Taking turns: ' + goal.rotation_child_ids.map((id) => childName(id)).join(' \u2192 ') + '.' : 'Taking turns with your siblings.')
+            ? (isParent
+                ? 'Taking turns ' + (ROTATE_LABELS[goal.rotation_every] || ROTATE_LABELS.each) + ': ' + goal.rotation_child_ids.map((id) => childName(id)).join(' \u2192 ') + '.'
+                : 'Taking turns with your siblings.')
             : '',
-          goal.require_photo ? 'Photo needed.' : '',
+          goal.require_photo ? (goal.ai_auto_approve ? 'Photo needed, AI verification on.' : 'Photo needed.') : '',
           goal.details || ''
         ].filter(Boolean).map(esc).join(' ');
 
@@ -1530,6 +1536,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
         setMessage('#newFamilyError', error.message);
         return;
       }
+      markTutorialPending();
       await afterOnboard();
     }
 
@@ -1548,6 +1555,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
         setMessage('#joinError', 'That invite code is not valid or has expired.');
         return;
       }
+      markTutorialPending();
       await afterOnboard();
     }
 
@@ -1585,6 +1593,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
         return;
       }
       localStorage.setItem(childKey, JSON.stringify({ token }));
+      markTutorialPending();
       await enterChild();
     }
 
@@ -1724,13 +1733,16 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
         consequence_days: $('#goalConsequenceDays').value ? Math.max(1, Math.round(Number($('#goalConsequenceDays').value))) : null,
         recurring_days: days,
         due_time: $('#goalDueTime').value || null,
-        require_photo: $('#goalRequirePhoto').checked
+        require_photo: $('#goalRequirePhoto').checked || $('#goalAiAuto').checked,
+        ai_auto_approve: $('#goalAiAuto').checked
       };
-      const rotate = $('#goalRotate').checked && days.length > 0 && childIds.length >= 2;
+      const rotateMode = $('#goalRotateMode').value;
+      const rotate = !!rotateMode && days.length > 0 && childIds.length >= 2;
+      fields.rotation_every = rotate ? rotateMode : 'each';
 
       if (editing?.type === 'goal') {
         if (!rotate && childIds.length !== 1) {
-          setMessage('#goalError', 'Pick exactly one child when editing, or tick "Take turns" to rotate between several.');
+          setMessage('#goalError', 'Pick exactly one child when editing, or choose "Take turns" to share it between several.');
           return;
         }
         const existing = family.goals.find((g) => g.id === editing.id);
@@ -1739,7 +1751,13 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
           ? (sameDays ? existing.due_date : firstOccurrence(days))
           : $('#goalDueDate').value;
         const owner = rotate ? (childIds.includes(existing?.child_id) ? existing.child_id : childIds[0]) : childIds[0];
-        await db.from('goals').update({ ...fields, child_id: owner, rotation_child_ids: rotate ? childIds : [], due_date: dueDate }).eq('id', editing.id);
+        // The current child keeps this turn: the order starts with them
+        const at = childIds.indexOf(owner);
+        const order = rotate ? [...childIds.slice(at), ...childIds.slice(0, at)] : [];
+        await db.from('goals').update({
+          ...fields, child_id: owner, rotation_child_ids: order,
+          rotation_anchor: rotate ? dueDate : null, due_date: dueDate
+        }).eq('id', editing.id);
         cancelEdit();
         await refreshAndRender();
         return;
@@ -1748,7 +1766,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
       const dueDate = days.length ? firstOccurrence(days) : $('#goalDueDate').value;
       // Taking turns: one goal that moves between the children. Otherwise one goal each.
       const rows = rotate
-        ? [{ family_id: family.id, child_id: childIds[0], rotation_child_ids: childIds, due_date: dueDate, status: 'active', ...fields }]
+        ? [{ family_id: family.id, child_id: childIds[0], rotation_child_ids: childIds, rotation_anchor: dueDate, due_date: dueDate, status: 'active', ...fields }]
         : childIds.map((id) => ({
             family_id: family.id,
             child_id: id,
