@@ -308,11 +308,19 @@
                 <label><input type="checkbox" value="0" /> Sun</label>
               </div>
             </div>
+            <div class="field hidden" id="goalRotateBox">Chore rotation
+              <div class="day-picker">
+                <label><input type="checkbox" id="goalRotate" /> Take turns: pass it to the next ticked child each time it is approved</label>
+              </div>
+            </div>
             <div class="field hidden" id="goalSkipBox">Skipped days
               <div id="goalSkipList" class="list"></div>
             </div>
             <label>Due date <span id="goalDueNote" class="meta"></span>
               <input id="goalDueDate" type="date" required />
+            </label>
+            <label>Due time <span class="meta">(optional, sends a reminder at this time)</span>
+              <input id="goalDueTime" type="time" />
             </label>
             <label>Consequence
               <select id="goalConsequenceChoice" required>
@@ -332,6 +340,11 @@
             <label>Details
               <textarea id="goalDetails" placeholder="What does complete look like?"></textarea>
             </label>
+            <div class="field">Proof
+              <div class="day-picker">
+                <label><input type="checkbox" id="goalRequirePhoto" /> Ask for a photo as proof (AI checks it)</label>
+              </div>
+            </div>
             <button class="btn" id="goalSubmit" type="submit">Create goal</button>
             <button class="btn secondary hidden" id="goalCancel" type="button">Cancel edit</button>
             <p id="goalError" class="error"></p>
@@ -532,6 +545,11 @@
             <label>Details
               <textarea id="challengeDetails" placeholder="What should they do?"></textarea>
             </label>
+            <div class="field">Proof
+              <div class="day-picker">
+                <label><input type="checkbox" id="challengeRequirePhoto" /> Ask for a photo as proof (AI checks it)</label>
+              </div>
+            </div>
             <button class="btn" id="challengeSubmit" type="submit">Create challenge</button>
             <button class="btn secondary hidden" id="challengeCancel" type="button">Cancel edit</button>
             <p id="challengeError" class="error"></p>
