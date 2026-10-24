@@ -304,6 +304,81 @@ async function ignoreConsequence(goalId) {
       ({ goal: startEditGoal, consequence: startEditConsequence, reward: startEditReward, challenge: startEditChallenge, activity: startEditActivity })[type](id);
     }
 
+    // ---------- skip a whole period (for example a holiday) ----------
+    function skippableItem(type, id) {
+      const list = { goal: family.goals, challenge: family.challenges, activity: family.activities || [] }[type];
+      return list ? list.find((x) => x.id === id) : null;
+    }
+
+    function skipPeriodButton(type, item) {
+      if (!(item.recurring_days || []).length) return '';
+      if (type === 'goal' && (item.status !== 'active' || item.due_date < todayStr())) return '';
+      return `<button class="btn ghost" type="button" onclick="skipPeriodFromModal('${type}', '${item.id}')">Skip a period...</button>`;
+    }
+
+    function skipPeriodFromModal(type, id) {
+      closeModal();
+      openSkipPeriod(type, id);
+    }
+
+    function openSkipPeriod(type, id) {
+      if (session.role !== 'parent') return;
+      const item = skippableItem(type, id);
+      if (!item) return;
+      const today = todayStr();
+      showModal('Skip a period',
+        `<p class="meta" style="margin:0 0 12px">${esc(item.title || item.name)} will be skipped on every day it would happen between these dates. You can restore single days afterwards.</p>
+         <div class="form-grid">
+           <label>From
+             <input id="skipFrom" type="date" value="${today}" min="${today}" />
+           </label>
+           <label>To
+             <input id="skipTo" type="date" value="${addDays(today, 6)}" min="${today}" />
+           </label>
+         </div>
+         <p id="skipPeriodError" class="error"></p>`,
+        `<button class="btn" type="button" onclick="applySkipPeriod('${type}', '${id}')">Skip these days</button>
+         <button class="btn secondary" type="button" onclick="closeModal()">Cancel</button>`);
+    }
+
+    async function applySkipPeriod(type, id) {
+      if (session.role !== 'parent') return;
+      const item = skippableItem(type, id);
+      if (!item) return;
+      setMessage('#skipPeriodError', '');
+      const from = $('#skipFrom').value;
+      const to = $('#skipTo').value;
+      const today = todayStr();
+      if (!from || !to) { setMessage('#skipPeriodError', 'Pick a start and an end date.'); return; }
+      if (from < today) { setMessage('#skipPeriodError', 'The start date cannot be in the past.'); return; }
+      if (to < from) { setMessage('#skipPeriodError', 'The end date must be on or after the start date.'); return; }
+      if (dayDiff(from, to) > 366) { setMessage('#skipPeriodError', 'Choose a period of a year or less.'); return; }
+
+      const days = item.recurring_days || [];
+      const skips = new Set(item.skip_dates || []);
+      let added = 0;
+      for (let d = from; d <= to; d = addDays(d, 1)) {
+        if (days.includes(weekdayOf(d)) && !skips.has(d)) { skips.add(d); added++; }
+      }
+      if (!added) { setMessage('#skipPeriodError', 'It does not happen on any day in that period, so there is nothing to skip.'); return; }
+
+      const update = { skip_dates: [...skips].sort() };
+      if (type === 'goal' && skips.has(item.due_date)) {
+        if (item.status !== 'active') {
+          setMessage('#skipPeriodError', 'This goal is waiting for approval or has a consequence, so it cannot be skipped right now.');
+          return;
+        }
+        update.due_date = nextRecurringDate(days, item.due_date, [...skips]);
+      }
+
+      const table = { goal: 'goals', challenge: 'challenges', activity: 'activities' }[type];
+      const res = await db.from(table).update(update).eq('id', id);
+      if (!check(res)) return;
+      closeModal();
+      await refreshAndRender();
+      showToast('Skipped ' + added + (added === 1 ? ' day' : ' days'), null);
+    }
+
     // "Skip this day" / "Restore this day" for one occurrence of a repeating item
     function skipButton(type, item, date) {
       if (!date || !(item.recurring_days || []).length) return '';
@@ -384,6 +459,7 @@ async function ignoreConsequence(goalId) {
           if (g.status === 'waiting') actions += approveIconBtn(`modalApproveGoal('${id}')`);
           actions += `<button class="btn secondary" type="button" onclick="editItem('goal', '${id}')">Edit</button>`;
           actions += skipButton('goal', g, date);
+          actions += skipPeriodButton('goal', g);
           if (g.status === 'active' && g.due_date < todayStr()) {
             actions += `<button class="btn danger" type="button" onclick="closeModal(); applyConsequence('${id}')">Apply consequence</button>`;
             actions += `<button class="btn ghost" type="button" onclick="closeModal(); ignoreConsequence('${id}')">Ignore consequence</button>`;
@@ -432,6 +508,7 @@ async function ignoreConsequence(goalId) {
           actions += `<button class="btn secondary" type="button" onclick="editItem('activity', '${id}')">Edit</button>`;
           actions += `<button class="btn danger" type="button" onclick="modalDeleteActivity('${id}')">Delete</button>`;
           actions += skipButton('activity', a, date);
+          actions += skipPeriodButton('activity', a);
         }
       } else if (type === 'challenge') {
         const c = family.challenges.find((x) => x.id === id);
@@ -445,6 +522,7 @@ async function ignoreConsequence(goalId) {
         if (isParent) {
           actions += `<button class="btn secondary" type="button" onclick="editItem('challenge', '${id}')">Edit</button>`;
           actions += skipButton('challenge', c, date);
+          actions += skipPeriodButton('challenge', c);
         }
       } else {
         return;
@@ -936,19 +1014,6 @@ async function ignoreConsequence(goalId) {
                 </article>`).join('')}
             </section>`).join('')
         : '<div class="empty">Nothing in the next 7 days.</div>';
-
-      // Everything, for managing
-      $('#activityAllSummary').textContent = 'All activities (' + all.length + ')';
-      $('#activityList').innerHTML = all.length
-        ? all.map((a) => `
-            <article class="row-item">
-              <div class="row-main">
-                <div class="row-title">${esc(a.title)}</div>
-                <div class="row-meta">${[isParent ? esc(childName(a.child_id)) : '', esc(activitySchedule(a)), esc(timeRange(a)), a.leave_time ? 'leave by ' + esc(fmtTime(a.leave_time)) : ''].filter(Boolean).join(' · ')}</div>
-              </div>
-              ${isParent ? `<div class="row-actions">${moreMenu(`<button class="btn small" type="button" onclick="startEditActivity('${a.id}')">Edit</button><button class="btn small danger-text" type="button" onclick="deleteActivity('${a.id}')">Delete</button>`)}</div>` : ''}
-            </article>`).join('')
-        : '<div class="empty">No activities yet.</div>';
     }
 
     function activityDateFor(days) {
@@ -1662,4 +1727,3 @@ async function ignoreConsequence(goalId) {
       const { data } = await db.auth.getSession();
       if (booting) await startFromAuth(data.session);
     }, 2000);
-  
