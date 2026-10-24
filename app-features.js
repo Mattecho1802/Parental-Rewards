@@ -270,21 +270,450 @@ async function ignoreConsequence(goalId) {
     // ---------- chore rotation ----------
     // The child who gets a repeating chore after this one (null when it does not rotate)
     function nextRotationChildId(goal) {
+      if ((goal.rotation_every || 'each') !== 'each') return null; // timetable rotations are worked out by the database
       const ids = (goal.rotation_child_ids || []).filter((cid) => family.children.some((k) => k.id === cid));
       if (ids.length < 2) return null;
       const pos = ids.indexOf(goal.child_id);
       return ids[(pos + 1) % ids.length];
     }
 
-    // The "Take turns" tick only makes sense for a repeating goal with two or more children
+    const ROTATE_LABELS = { each: 'each time', week: 'every week', '2weeks': 'every 2 weeks', month: 'every month' };
+
+    // Two or more children ticked: choose "each gets their own" or take turns (needs repeat days)
     function updateGoalRotateState() {
       const box = $('#goalRotateBox');
       if (!box) return;
+      const select = $('#goalRotateMode');
       const kids = $$('#goalChildren input[data-child]:checked').length;
       const repeats = $$('#goalDays input:checked').length > 0;
-      const show = kids >= 2 && repeats;
-      box.classList.toggle('hidden', !show);
-      if (!show) $('#goalRotate').checked = false;
+      box.classList.toggle('hidden', kids < 2);
+      select.disabled = !repeats;
+      if (kids < 2 || !repeats) select.value = '';
+      $('#goalRotateNote').textContent = kids >= 2 && !repeats ? 'Pick repeat days above to let them take turns.' : '';
+    }
+
+    // ---------- "..." menu placement ----------
+    function placeMoreMenu(d) {
+      const menu = d.querySelector('.more-menu');
+      const button = d.querySelector('summary');
+      if (!menu || !button) return;
+      const pad = 8;
+      menu.style.position = 'fixed';
+      menu.style.right = 'auto';
+      menu.style.left = '0px';
+      menu.style.top = '0px';
+      menu.style.zIndex = '60';
+      menu.style.maxWidth = (window.innerWidth - pad * 2) + 'px';
+      const r = button.getBoundingClientRect();
+      const w = menu.offsetWidth;
+      const h = menu.offsetHeight;
+      const nav = document.querySelector('.mobile-nav');
+      const navH = nav && getComputedStyle(nav).display !== 'none' ? nav.offsetHeight : 0;
+      const left = Math.min(Math.max(pad, r.right - w), window.innerWidth - w - pad);
+      let top = r.bottom + 4;
+      if (top + h > window.innerHeight - navH - pad && r.top - h - 4 >= pad) top = r.top - h - 4;
+      menu.style.left = Math.max(pad, left) + 'px';
+      menu.style.top = top + 'px';
+    }
+
+    // ---------- widgets ----------
+    const WIDGETS = [
+      { id: 'goalsDue', name: 'Goals due soon', roles: ['parent', 'child'], section: 'goalsSection' },
+      { id: 'nextReward', name: 'Next reward', roles: ['parent', 'child'], section: 'rewardsSection' },
+      { id: 'points', name: 'Points', roles: ['parent', 'child'], section: 'rewardsSection' },
+      { id: 'today', name: 'Today', roles: ['parent', 'child'], section: 'todaySection' },
+      { id: 'nextActivity', name: 'Next activity', roles: ['parent', 'child'], section: 'activitiesSection' },
+      { id: 'attention', name: 'Needs your attention', roles: ['parent'], section: 'attentionSection' },
+      { id: 'overdue', name: 'Overdue goals', roles: ['parent', 'child'], section: 'goalsSection' },
+      { id: 'challenges', name: 'Challenges today', roles: ['parent', 'child'], section: 'challengesSection' },
+      { id: 'consequences', name: 'Active consequences', roles: ['parent', 'child'], section: 'consequenceSection' },
+      { id: 'feedback', name: 'Latest note', roles: ['parent', 'child'], section: 'feedbackSection' }
+    ];
+    const WIDGET_DEFAULTS = {
+      parent: ['attention', 'goalsDue', 'today', 'nextReward'],
+      child: ['goalsDue', 'nextReward', 'points', 'today']
+    };
+
+    function widgetKey() {
+      return 'parentalRewardsWidgets:' + (session.role === 'parent' ? 'p:' + session.userId : 'c:' + session.childId);
+    }
+
+    function loadWidgetPrefs() {
+      let p = null;
+      try { p = JSON.parse(localStorage.getItem(widgetKey()) || 'null'); } catch (e) { p = null; }
+      if (!p || !Array.isArray(p.items)) {
+        p = { enabled: false, items: WIDGET_DEFAULTS[session.role].map((id) => ({ id, size: 'small', child: 'all' })) };
+      }
+      p.items = p.items.filter((it, i, all) =>
+        WIDGETS.some((w) => w.id === it.id && w.roles.includes(session.role)) && all.findIndex((x) => x.id === it.id) === i);
+      return p;
+    }
+
+    function saveWidgetPrefs(p) {
+      try { localStorage.setItem(widgetKey(), JSON.stringify(p)); } catch (e) { /* this device will forget */ }
+    }
+
+    function widgetKids(item) {
+      if (session.role !== 'parent') return [activeChild()];
+      if (item.child && item.child !== 'all') {
+        const one = family.children.filter((k) => k.id === item.child);
+        if (one.length) return one;
+      }
+      return family.children;
+    }
+
+    function dueText(goal) {
+      const today = todayStr();
+      const time = goal.due_time ? ' ' + fmtTime(goal.due_time) : '';
+      if (goal.due_date < today) return 'Overdue';
+      if (goal.due_date === today) return 'Today' + time;
+      if (goal.due_date === addDays(today, 1)) return 'Tomorrow' + time;
+      return prettyDate(goal.due_date) + time;
+    }
+
+    function widgetLines(lines) {
+      return lines.length ? `<ul class="widget-lines">${lines.map((l) => `<li>${l}</li>`).join('')}</ul>` : '';
+    }
+
+    function nextRewardFor(kid) {
+      const today = todayStr();
+      const open = (family.rewards || [])
+        .filter((r) => r.limit_count - r.claimed_count > 0 && r.available_until >= today)
+        .sort((a, b) => a.cost - b.cost);
+      const ready = open.filter((r) => r.cost <= kid.points);
+      const next = open.find((r) => r.cost > kid.points);
+      return { ready, next };
+    }
+
+    function widgetData(item) {
+      const kids = widgetKids(item);
+      const ids = new Set(kids.map((k) => k.id));
+      const many = session.role === 'parent' && kids.length > 1;
+      const who = (id) => many ? esc(childName(id)) + ': ' : '';
+      const today = todayStr();
+      const dow = new Date().getDay();
+
+      switch (item.id) {
+        case 'goalsDue': {
+          const open = family.goals
+            .filter((g) => ids.has(g.child_id) && g.status === 'active' && !isWaitingForNextDay(g))
+            .sort((a, b) => a.due_date.localeCompare(b.due_date) || String(a.due_time || '99').localeCompare(String(b.due_time || '99')));
+          return {
+            value: open.length,
+            sub: open.length ? (open.length === 1 ? 'goal to do' : 'goals to do') : 'All done for now',
+            body: widgetLines(open.slice(0, item.size === 'wide' ? 5 : 3).map((g) =>
+              `${who(g.child_id)}${esc(g.name)} <span class="${g.due_date < today ? 'w-bad' : 'w-dim'}">${esc(dueText(g))}</span>`))
+          };
+        }
+        case 'nextReward': {
+          if (!family.rewards || !family.rewards.length) return { value: '—', sub: 'No rewards yet', body: '' };
+          const rows = kids.map((k) => {
+            const { ready, next } = nextRewardFor(k);
+            if (!next && ready.length) return `${who(k.id)}Ready to redeem: ${esc(ready[ready.length - 1].name)}`;
+            if (!next) return `${who(k.id)}<span class="w-dim">Nothing available</span>`;
+            const pct = Math.min(100, Math.round((k.points / next.cost) * 100));
+            return `${who(k.id)}${esc(next.name)} <span class="w-dim">${next.cost - k.points} to go</span>
+              <div class="progress reward" style="height:8px;margin-top:4px"><span style="width:${pct}%"></span></div>`;
+          });
+          const first = kids.length === 1 ? nextRewardFor(kids[0]) : null;
+          return {
+            value: first ? (first.next ? Math.min(100, Math.round((kids[0].points / first.next.cost) * 100)) + '%' : (first.ready.length ? '✓' : '—')) : kids.length,
+            sub: first ? (first.next ? 'of the way to ' + esc(first.next.name) : first.ready.length ? 'Ready to redeem' : '') : 'children',
+            body: widgetLines(rows)
+          };
+        }
+        case 'points': {
+          const total = kids.reduce((s, k) => s + k.points, 0);
+          return {
+            value: total,
+            sub: kids.length === 1 ? 'points' : 'points in total',
+            body: kids.length > 1 ? widgetLines(kids.map((k) => `${esc(k.name)} <span class="w-dim">${k.points}</span>`)) : ''
+          };
+        }
+        case 'today': {
+          const acts = (family.activities || []).filter((a) => ids.has(a.child_id) && activityOccursOn(a, today) && !isSkippedOn(a, today));
+          const goals = family.goals.filter((g) => ids.has(g.child_id) && g.status === 'active' && g.due_date === today);
+          const lines = [
+            ...acts.sort((a, b) => String(a.start_time || '').localeCompare(String(b.start_time || '')))
+              .map((a) => `${who(a.child_id)}${esc(a.title)} <span class="w-dim">${activityDone(a, today) ? 'done' : esc(fmtTime(a.start_time) || 'today')}</span>`),
+            ...goals.map((g) => `${who(g.child_id)}${esc(g.name)} <span class="w-dim">${esc(dueText(g))}</span>`)
+          ];
+          return {
+            value: acts.length + goals.length,
+            sub: acts.length + ' activit' + (acts.length === 1 ? 'y' : 'ies') + ', ' + goals.length + ' goal' + (goals.length === 1 ? '' : 's'),
+            body: widgetLines(lines.slice(0, item.size === 'wide' ? 6 : 3))
+          };
+        }
+        case 'nextActivity': {
+          for (let i = 0; i <= 14; i++) {
+            const d = addDays(today, i);
+            const list = (family.activities || [])
+              .filter((a) => ids.has(a.child_id) && activityOccursOn(a, d) && !isSkippedOn(a, d))
+              .filter((a) => i > 0 || !activityDone(a, d))
+              .sort((a, b) => String(a.start_time || '').localeCompare(String(b.start_time || '')));
+            if (list.length) {
+              const a = list[0];
+              return {
+                value: esc(fmtTime(a.start_time) || (i === 0 ? 'Today' : '')),
+                sub: `${who(a.child_id)}${esc(a.title)}`,
+                body: `<div class="widget-sub w-dim">${i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : esc(prettyDate(d))}${a.leave_time ? ' · leave by ' + esc(fmtTime(a.leave_time)) : ''}</div>`
+              };
+            }
+          }
+          return { value: '—', sub: 'Nothing in the next 2 weeks', body: '' };
+        }
+        case 'attention': {
+          const n = family.requests.filter((r) => ids.has(r.child_id) && r.status === 'waiting').length
+            + family.goals.filter((g) => ids.has(g.child_id) && g.status === 'waiting').length;
+          return { value: n, sub: n ? 'waiting for you' : 'All caught up', body: '', tone: n ? 'warn' : '' };
+        }
+        case 'overdue': {
+          const list = family.goals.filter((g) => ids.has(g.child_id) && g.status === 'active' && g.due_date < today);
+          return {
+            value: list.length,
+            sub: list.length ? 'overdue' : 'Nothing overdue',
+            body: widgetLines(list.slice(0, 3).map((g) => `${who(g.child_id)}${esc(g.name)}`)),
+            tone: list.length ? 'bad' : ''
+          };
+        }
+        case 'challenges': {
+          const list = family.challenges.filter((c) => ids.has(c.child_id)
+            && (!(c.recurring_days || []).length || (c.recurring_days.includes(dow) && !isSkippedOn(c, today)))
+            && c.last_completed_date !== today);
+          const pts = list.reduce((s, c) => s + (c.points || 0), 0);
+          return {
+            value: list.length,
+            sub: list.length ? 'up to ' + pts + ' points' : 'None today',
+            body: widgetLines(list.slice(0, 3).map((c) => `${who(c.child_id)}${esc(c.name)} <span class="w-dim">${c.points} pts</span>`))
+          };
+        }
+        case 'consequences': {
+          const list = (family.consequences || []).filter((c) => ids.has(c.child_id) && c.status === 'active');
+          return {
+            value: list.length,
+            sub: list.length ? 'active' : 'None',
+            body: widgetLines(list.slice(0, 3).map((c) => `${who(c.child_id)}${esc(c.name)}${c.ends_on ? ' <span class="w-dim">until ' + esc(prettyDate(c.ends_on)) + '</span>' : ''}`)),
+            tone: list.length ? 'warn' : ''
+          };
+        }
+        case 'feedback': {
+          const notes = (family.notes || []).filter((n) => ids.has(n.child_id));
+          const latest = notes[0];
+          if (!latest) return { value: '—', sub: 'No notes yet', body: '' };
+          const unread = notes.filter((n) => !n.read_at).length;
+          return {
+            value: session.role === 'parent' ? unread : '\u{1F4AC}',
+            sub: session.role === 'parent' ? 'not seen yet' : 'From ' + esc(latest.author_name || 'your parent'),
+            body: `<div class="widget-quote">${who(latest.child_id)}${esc(String(latest.message || '').slice(0, 120))}</div>`
+          };
+        }
+      }
+      return { value: '', sub: '', body: '' };
+    }
+
+    function renderWidgets() {
+      const section = $('#widgetsSection');
+      if (!section || !session || !family) return;
+      const p = loadWidgetPrefs();
+      section.classList.toggle('hidden', !p.enabled);
+      const toggle = $('#widgetsToggle');
+      if (toggle) toggle.checked = p.enabled;
+      if (!p.enabled) return;
+      $('#widgetGrid').innerHTML = p.items.length
+        ? p.items.map((item) => {
+            const w = WIDGETS.find((x) => x.id === item.id);
+            const d = widgetData(item);
+            const forKid = session.role === 'parent' && item.child && item.child !== 'all' && family.children.some((k) => k.id === item.child)
+              ? ' · ' + esc(childName(item.child)) : '';
+            return `
+              <article class="widget w-${item.size === 'wide' ? 'wide' : 'small'}${d.tone ? ' tone-' + d.tone : ''}" role="button" tabindex="0"
+                onclick="jumpTo('${w.section}')" onkeydown="if (event.key === 'Enter') jumpTo('${w.section}')">
+                <div class="widget-title">${esc(w.name)}${forKid}</div>
+                <div class="widget-value">${d.value}</div>
+                ${d.sub ? `<div class="widget-sub">${d.sub}</div>` : ''}
+                ${d.body || ''}
+              </article>`;
+          }).join('')
+        : '<div class="empty">No widgets picked. Tap Customise to add some.</div>';
+    }
+
+    function setWidgetsEnabled(on) {
+      const p = loadWidgetPrefs();
+      p.enabled = !!on;
+      saveWidgetPrefs(p);
+      renderWidgets();
+      if (on) jumpTo('widgetsSection');
+    }
+
+    function openWidgetEditor() {
+      const p = loadWidgetPrefs();
+      const available = WIDGETS.filter((w) => w.roles.includes(session.role));
+      const chosen = p.items.map((it) => ({ it, w: available.find((w) => w.id === it.id) })).filter((x) => x.w);
+      const others = available.filter((w) => !p.items.some((it) => it.id === w.id));
+      const kidOptions = (sel) => '<option value="all">All children</option>' + family.children.map((k) =>
+        `<option value="${k.id}" ${sel === k.id ? 'selected' : ''}>${esc(k.name)}</option>`).join('');
+      const showKid = session.role === 'parent' && family.children.length > 1;
+
+      const row = (w, it, i) => `
+        <div class="widget-edit-row">
+          <label class="widget-edit-name"><input type="checkbox" ${it ? 'checked' : ''} onchange="toggleWidget('${w.id}', this.checked)" /> ${esc(w.name)}</label>
+          ${it ? `<div class="widget-edit-controls">
+            <button class="btn ghost small icon" type="button" aria-label="Move up" ${i === 0 ? 'disabled' : ''} onclick="moveWidget('${w.id}', -1)">↑</button>
+            <button class="btn ghost small icon" type="button" aria-label="Move down" ${i === chosen.length - 1 ? 'disabled' : ''} onclick="moveWidget('${w.id}', 1)">↓</button>
+            <select aria-label="Size" onchange="setWidgetOption('${w.id}', 'size', this.value)">
+              <option value="small" ${it.size !== 'wide' ? 'selected' : ''}>Small</option>
+              <option value="wide" ${it.size === 'wide' ? 'selected' : ''}>Wide</option>
+            </select>
+            ${showKid ? `<select aria-label="Child" onchange="setWidgetOption('${w.id}', 'child', this.value)">${kidOptions(it.child)}</select>` : ''}
+          </div>` : ''}
+        </div>`;
+
+      showModal('Customise widgets', `
+        <div class="day-picker" style="margin-bottom:10px">
+          <label><input type="checkbox" ${p.enabled ? 'checked' : ''} onchange="setWidgetsEnabled(this.checked); openWidgetEditor()" /> Show widgets on my dashboard</label>
+        </div>
+        <p class="meta" style="margin:0 0 8px">Tick the ones you want, use the arrows to change the order, and pick a size${showKid ? ' and which child each one shows' : ''}.</p>
+        <div class="widget-edit-list">
+          ${chosen.map((x, i) => row(x.w, x.it, i)).join('')}
+          ${others.map((w) => row(w, null, -1)).join('')}
+        </div>`,
+        `<button class="btn" type="button" onclick="closeModal()">Done</button>
+         <button class="btn secondary" type="button" onclick="resetWidgets()">Reset to default</button>`);
+    }
+
+    function updateWidgetPrefs(change) {
+      const p = loadWidgetPrefs();
+      change(p);
+      saveWidgetPrefs(p);
+      renderWidgets();
+      openWidgetEditor();
+    }
+
+    function toggleWidget(id, on) {
+      updateWidgetPrefs((p) => {
+        p.items = p.items.filter((it) => it.id !== id);
+        if (on) p.items.push({ id, size: 'small', child: 'all' });
+        if (on) p.enabled = true;
+      });
+    }
+
+    function moveWidget(id, dir) {
+      updateWidgetPrefs((p) => {
+        const i = p.items.findIndex((it) => it.id === id);
+        const j = i + dir;
+        if (i < 0 || j < 0 || j >= p.items.length) return;
+        [p.items[i], p.items[j]] = [p.items[j], p.items[i]];
+      });
+    }
+
+    function setWidgetOption(id, key, value) {
+      updateWidgetPrefs((p) => {
+        const it = p.items.find((x) => x.id === id);
+        if (it) it[key] = value;
+      });
+    }
+
+    function resetWidgets() {
+      updateWidgetPrefs((p) => {
+        p.items = WIDGET_DEFAULTS[session.role].map((id) => ({ id, size: 'small', child: 'all' }));
+      });
+    }
+
+    // ---------- first-time tutorial ----------
+    const TUTORIAL = {
+      parent: [
+        { icon: '\u{1F44B}', title: 'Welcome to Parental Rewards', text: 'Set goals and challenges for your children, approve what they do, and let them earn rewards. Here is a quick tour. It takes about a minute.' },
+        { icon: '\u{1F467}', title: 'Add your children', text: 'Add each child under Settings, then Children. They sign in on their own phone or tablet with your family code and their name. No password needed.', code: true },
+        { icon: '\u{1F3AF}', title: 'Goals are the must-dos', text: 'Give a goal a due date (and a time if you want reminders 30 and 10 minutes before), pick repeat days for chores, and choose a consequence if it is missed. Tick two or more children to give each their own, or let them take turns.' },
+        { icon: '\u{1F4F7}', title: 'Photo proof and AI', text: 'Ask for a photo when they finish. Turn on AI verification and a clear photo is approved straight away. If the AI is not sure, it comes to you instead.' },
+        { icon: '⭐', title: 'Challenges and rewards', text: 'Challenges are optional extras that earn points. Children spend their points in the reward shop you set up, like a movie night or extra game time.' },
+        { icon: '✅', title: 'Approve with a tap', text: 'Everything waiting for you shows under Needs your attention. Tap ✓ to approve, ✕ to send it back with a reason, or Tip to give bonus points. Changed your mind? Undo it.' },
+        { icon: '\u{1F4C5}', title: 'Calendar and activities', text: 'Add things like football training or a doctor’s appointment. They show on the calendar, and you get a reminder when it is time to leave.' },
+        { icon: '\u{1F514}', title: 'Notifications and widgets', text: 'Turn on notifications so you know when something needs you. Widgets put what matters most at the top of your dashboard. You choose which ones, their order and size in Settings, under Widgets & help.', last: 'parent' }
+      ],
+      child: [
+        { icon: '\u{1F44B}', title: 'Welcome!', text: 'This is where you see what to do, and earn points for rewards. Here is a quick tour.' },
+        { icon: '\u{1F3AF}', title: 'Goals', text: 'Goals are things you need to do. When you have done one, tap the button on it. Some need a photo to show it is done.' },
+        { icon: '⭐', title: 'Challenges', text: 'Challenges are optional extras. Finish one and your parent approves it to give you points.' },
+        { icon: '\u{1F381}', title: 'Rewards', text: 'Save up your points and spend them on rewards in the Rewards page.' },
+        { icon: '\u{1F514}', title: 'Notifications and widgets', text: 'Turn on notifications to get reminders before things are due. Widgets show what matters to you at the top of your page. Pick them in your Profile, under Widgets & help.', last: 'child' }
+      ]
+    };
+    let tutorialStep = 0;
+
+    function tutorialSeenKey() {
+      return 'parentalRewardsTutorialSeen:' + (session.role === 'parent' ? session.userId : session.childId);
+    }
+
+    function markTutorialPending() {
+      try { localStorage.setItem('parentalRewardsTutorialPending', '1'); } catch (e) { /* ignore */ }
+    }
+
+    function maybeStartTutorial() {
+      if (!session || !family) return;
+      let pending = false;
+      let seen = false;
+      try {
+        pending = localStorage.getItem('parentalRewardsTutorialPending') === '1';
+        seen = localStorage.getItem(tutorialSeenKey()) === '1';
+      } catch (e) { return; }
+      if (pending && !seen) startTutorial();
+      else if (pending) { try { localStorage.removeItem('parentalRewardsTutorialPending'); } catch (e) { /* ignore */ } }
+    }
+
+    function startTutorial() {
+      if (!session) return;
+      try {
+        localStorage.removeItem('parentalRewardsTutorialPending');
+        localStorage.setItem(tutorialSeenKey(), '1');
+      } catch (e) { /* ignore */ }
+      tutorialStep = 0;
+      showTutorialStep();
+    }
+
+    function tutorialMove(dir) {
+      const steps = TUTORIAL[session.role];
+      tutorialStep = Math.max(0, Math.min(steps.length - 1, tutorialStep + dir));
+      showTutorialStep();
+    }
+
+    function tutorialFinish(action) {
+      closeModal();
+      if (action === 'widgets') setWidgetsEnabled(true);
+      if (action === 'child') {
+        jumpTo('childrenSection');
+        const add = $('#childrenSection details.add-panel');
+        if (add) add.open = true;
+      }
+    }
+
+    function showTutorialStep() {
+      const steps = TUTORIAL[session.role];
+      const s = steps[tutorialStep];
+      const dots = steps.map((_, i) => `<span class="tut-dot${i === tutorialStep ? ' on' : ''}"></span>`).join('');
+      const code = s.code && family ? `<div class="tut-code">Family code: <strong>${esc(family.family_code)}</strong></div>` : '';
+      let actions;
+      if (s.last === 'parent') {
+        actions = `<button class="btn" type="button" onclick="tutorialFinish(${family.children.length ? "'done'" : "'child'"})">${family.children.length ? 'Get started' : 'Add your first child'}</button>
+          <button class="btn secondary" type="button" onclick="tutorialFinish('widgets')">Turn on widgets</button>
+          <button class="btn ghost" type="button" onclick="tutorialMove(-1)">Back</button>`;
+      } else if (s.last === 'child') {
+        actions = `<button class="btn" type="button" onclick="tutorialFinish('done')">Let's go</button>
+          <button class="btn secondary" type="button" onclick="tutorialFinish('widgets')">Turn on widgets</button>
+          <button class="btn ghost" type="button" onclick="tutorialMove(-1)">Back</button>`;
+      } else {
+        actions = `<button class="btn" type="button" onclick="tutorialMove(1)">Next</button>`
+          + (tutorialStep > 0
+            ? `<button class="btn ghost" type="button" onclick="tutorialMove(-1)">Back</button>`
+            : `<button class="btn ghost" type="button" onclick="closeModal()">Skip</button>`);
+      }
+      showModal(s.title, `
+        <div class="tutorial">
+          <div class="tut-icon" aria-hidden="true">${s.icon}</div>
+          <p>${esc(s.text)}</p>
+          ${code}
+          <div class="tut-dots" aria-label="Step ${tutorialStep + 1} of ${steps.length}">${dots}</div>
+        </div>`, actions);
     }
 
     // ---------- photo proof ----------
@@ -324,7 +753,8 @@ async function ignoreConsequence(goalId) {
         alert('The photo could not be opened. It may already have been deleted.');
         return;
       }
-      const item = family.goals.find((g) => g.photo_path === path) || family.requests.find((r) => r.photo_path === path);
+      const item = family.goals.find((g) => g.photo_path === path) || family.requests.find((r) => r.photo_path === path)
+        || (family.approvals || []).map((a) => a.snapshot).find((s) => s && s.photo_path === path);
       showModal('Photo proof',
         `<img src="${esc(data.signedUrl)}" alt="Photo sent by your child" style="width:100%;border-radius:12px" />
          ${item ? `<div style="margin-top:10px">${aiBadge(item.ai_verdict)}</div>${item.ai_note ? `<p class="meta">${esc(item.ai_note)}</p>` : ''}` : ''}
@@ -342,7 +772,9 @@ async function ignoreConsequence(goalId) {
       if (!item) return;
       pendingPhoto = { kind, id, base64: null };
       showModal('Show it is done',
-        `<p class="meta" style="margin:0 0 10px">Take a photo of <strong>${esc(item.name)}</strong> done. A helper checks it, then your parent makes the final decision.</p>
+        `<p class="meta" style="margin:0 0 10px">Take a photo of <strong>${esc(item.name)}</strong> done. ${item.ai_auto_approve
+            ? 'If the AI can clearly see it is done, it is approved straight away. If not, it goes to your parent.'
+            : 'A helper checks it, then your parent makes the final decision.'}</p>
          <input id="photoInput" type="file" accept="image/*" capture="environment" onchange="photoChosen(this)" />
          <img id="photoPreview" class="hidden" alt="Your photo" style="width:100%;max-height:300px;object-fit:contain;border-radius:12px;margin-top:10px" />
          <p id="photoStatus" class="meta" style="margin:10px 0 0"></p>`,
@@ -414,16 +846,25 @@ async function ignoreConsequence(goalId) {
         return;
       }
       if (data.needs_confirm) {
-        setPhotoStatus((data.note || 'I am not sure that photo shows it done.') + ' Take another, or send it to your parent anyway.');
+        setPhotoStatus((data.note || 'I am not sure that photo shows it done.') + ' Take another, or send it to your parent anyway.'
+          + (data.auto ? ' The AI could not verify it, so if you send it, your parent checks it instead.' : ''));
         $('#modalActions').innerHTML =
           `<button class="btn" type="button" onclick="retakePhoto()">Retake photo</button>
            <button class="btn secondary" type="button" onclick="submitPhoto(true)">Send anyway</button>`;
         return;
       }
       pendingPhoto = null;
-      showModal('Sent!',
-        `<p style="margin:0">Your parent will take a look.</p>${data.note ? `<p class="meta">${esc(data.note)}</p>` : ''}`,
-        `<button class="btn" type="button" onclick="closeModal()">Done</button>`);
+      const note = data.note ? `<p class="meta">${esc(data.note)}</p>` : '';
+      if (data.auto_approved) {
+        showModal('Approved! ✓', `<p style="margin:0">The AI checked your photo and approved it. Well done!</p>${note}`,
+          `<button class="btn" type="button" onclick="closeModal()">Done</button>`);
+      } else if (data.auto_failed) {
+        showModal('Sent to your parent', `<p style="margin:0">The AI could not verify it this time, so it has been sent to your parent to check instead.</p>${note}`,
+          `<button class="btn" type="button" onclick="closeModal()">OK</button>`);
+      } else {
+        showModal('Sent!', `<p style="margin:0">Your parent will take a look.</p>${note}`,
+          `<button class="btn" type="button" onclick="closeModal()">Done</button>`);
+      }
       activeTab = 'requests';
       await refreshAndRender();
     }
@@ -1621,8 +2062,11 @@ async function ignoreConsequence(goalId) {
           <article class="row-item">
             <div class="row-main">
               <div class="row-title">${esc(childName(a.child_id))}: ${esc(a.label)}</div>
-              <div class="row-meta">${a.kind === 'goal' ? 'Goal' : 'Challenge'} approved · ${when}${a.points ? ' · +' + a.points + ' points' : ''}</div>
+              <div class="row-meta">${a.auto ? 'Goal approved by AI from a photo' : (a.kind === 'goal' ? 'Goal' : 'Challenge') + ' approved'} · ${when}${a.points ? ' · +' + a.points + ' points' : ''}</div>
             </div>
+            ${a.auto && !a.undone_at && a.snapshot && a.snapshot.photo_path
+              ? `<button class="btn ghost small" type="button" onclick="viewProof('${esc(a.snapshot.photo_path)}')">📷 Photo</button>`
+              : ''}
             ${a.undone_at
               ? '<span class="pill">Undone</span>'
               : `<button class="btn ghost-danger small" type="button" onclick="undoApproval('${a.id}', true)">Undo</button>`}
@@ -1785,6 +2229,20 @@ async function ignoreConsequence(goalId) {
     $('#goalDays').addEventListener('change', updateGoalDueState);
     $('#goalDays').addEventListener('change', updateGoalRotateState);
     $('#goalChildren').addEventListener('change', () => setTimeout(updateGoalRotateState, 0));
+    // AI verification needs a photo; no photo means no AI verification
+    $('#goalAiAuto').addEventListener('change', () => { if ($('#goalAiAuto').checked) $('#goalRequirePhoto').checked = true; });
+    $('#goalRequirePhoto').addEventListener('change', () => { if (!$('#goalRequirePhoto').checked) $('#goalAiAuto').checked = false; });
+
+    // "..." menus: keep them on screen (phones especially) and close them when the page scrolls
+    document.addEventListener('toggle', (e) => {
+      const d = e.target;
+      if (!d.classList || !d.classList.contains('more') || !d.open) return;
+      $$('.more[open]').forEach((m) => { if (m !== d) m.open = false; });
+      placeMoreMenu(d);
+    }, true);
+    const closeMoreMenus = () => $$('.more[open]').forEach((m) => { m.open = false; });
+    window.addEventListener('scroll', closeMoreMenus, { passive: true });
+    window.addEventListener('resize', closeMoreMenus);
     $('#goalConsequenceChoice').addEventListener('change', updateGoalConsequenceUI);
     $('#consequenceChoice').addEventListener('change', updateConsequenceUI);
     updateConsequenceUI();
