@@ -298,9 +298,14 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
       const repeating = (goal.recurring_days || []).length > 0;
       // A repeating goal only counts its own day: the bar runs from 6am to 9pm that day.
       // Other goals run from when they were created to the end of the due day.
-      const end = repeating ? new Date(y, m - 1, d, 21, 0) : new Date(y, m - 1, d + 1);
+      // With a due time set, the bar ends at that time instead.
+      let hh = 0, mm = 0;
+      const timed = !!goal.due_time;
+      if (timed) [hh, mm] = String(goal.due_time).split(':').map(Number);
+      const end = timed ? new Date(y, m - 1, d, hh, mm) : repeating ? new Date(y, m - 1, d, 21, 0) : new Date(y, m - 1, d + 1);
+      const sixAm = new Date(y, m - 1, d, 6, 0);
       const start = repeating
-        ? new Date(y, m - 1, d, 6, 0)
+        ? (timed && end <= sixAm ? new Date(end.getTime() - 3600000) : sixAm)
         : (goal.created_at ? new Date(goal.created_at) : new Date(end.getTime() - 7 * 86400000));
       const total = end - start;
       const pct = total > 0 ? Math.min(100, Math.max(0, ((now - start) / total) * 100)) : 100;
@@ -700,7 +705,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
     }
 
     function renderChallengeSelect() { renderChildPicker('challengeChildren'); }
-    function renderGoalSelect() { renderChildPicker('goalChildren'); }
+    function renderGoalSelect() { renderChildPicker('goalChildren'); updateGoalRotateState(); }
     function renderConsequenceSelect() { renderChildPicker('consequenceChildren'); }
 
     function renderParents() {
@@ -806,6 +811,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
       ['challengeCancel', 'goalCancel', 'rewardCancel', 'consequenceCancel', 'activityCancel'].forEach((id) => $('#' + id).classList.add('hidden'));
       ['#challengeError', '#goalError', '#rewardError', '#consequenceError', '#activityError'].forEach((id) => setMessage(id, ''));
       updateGoalDueState();
+      updateGoalRotateState();
       updateGoalConsequenceUI();
       updateConsequenceUI();
       updateActivityUI();
@@ -860,6 +866,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
       $('#challengeDetails').value = c.details || '';
       setPicker('challengeChildren', [c.child_id]);
       setDays('challengeDays', c.recurring_days || []);
+      $('#challengeRequirePhoto').checked = !!c.require_photo;
       $('#challengeFormTitle').textContent = 'Edit challenge';
       $('#challengeSubmit').textContent = 'Save changes';
       $('#challengeCancel').classList.remove('hidden');
@@ -883,9 +890,14 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
       updateGoalConsequenceUI();
       $('#goalConsequenceDays').value = g.consequence_days || '';
       $('#goalDueDate').value = g.due_date;
-      setPicker('goalChildren', [g.child_id]);
+      const rotation = (g.rotation_child_ids || []).filter((cid) => family.children.some((k) => k.id === cid));
+      setPicker('goalChildren', rotation.length >= 2 ? rotation : [g.child_id]);
       setDays('goalDays', g.recurring_days || []);
       updateGoalDueState();
+      updateGoalRotateState();
+      $('#goalRotate').checked = rotation.length >= 2 && (g.recurring_days || []).length > 0;
+      $('#goalDueTime').value = g.due_time ? String(g.due_time).slice(0, 5) : '';
+      $('#goalRequirePhoto').checked = !!g.require_photo;
       $('#goalFormTitle').textContent = 'Edit goal';
       renderGoalSkipList(g);
       $('#goalSubmit').textContent = 'Save changes';
@@ -956,6 +968,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
         const bits = [
           isParent ? 'For ' + childName(challenge.child_id) : '',
           isRecurring(challenge) ? 'Repeats ' + [...challenge.recurring_days].sort().map((d) => DAY_NAMES[d]).join(', ') : '',
+          challenge.require_photo ? 'Photo needed' : '',
           challenge.details || ''
         ].filter(Boolean).map(esc).join(' · ');
 
@@ -977,7 +990,9 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
               + `<button class="btn small danger-text" type="button" onclick="deleteChallenge('${challenge.id}')">Delete</button>`)
           : (waitingRequest
               ? '<span class="pill amber">Sent</span>'
-              : `<button class="btn ghost small" type="button" onclick="sendCompletionRequest('${challenge.id}')">✓ I finished this</button>`);
+              : challenge.require_photo
+                ? `<button class="btn ghost small" type="button" onclick="openPhotoModal('challenge', '${challenge.id}')">📷 I finished this</button>`
+                : `<button class="btn ghost small" type="button" onclick="sendCompletionRequest('${challenge.id}')">✓ I finished this</button>`);
 
         return `
           <article class="row-item">
@@ -1062,7 +1077,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
           fill = 0; label = 'Next one starts ' + (p.daysLeft === 1 ? 'tomorrow' : 'in ' + p.daysLeft + ' days');
         } else {
           tone = p.pct >= 85 ? 'bad' : p.pct >= 60 ? 'warn' : 'ok';
-          label = p.daysLeft === 0 ? 'Due today, ends tonight' : p.daysLeft === 1 ? '1 day left' : p.daysLeft + ' days left';
+          label = p.daysLeft === 0 ? (goal.due_time ? 'Due today at ' + fmtTime(goal.due_time) : 'Due today, ends tonight') : p.daysLeft === 1 ? '1 day left' : p.daysLeft + ' days left';
         }
 
         const overdue = goal.status !== 'consequence' && goal.status !== 'waiting' && goal.due_date < todayStr();
@@ -1078,12 +1093,18 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
           menu += `<button class="btn small danger-text" type="button" onclick="deleteGoal('${goal.id}')">Delete</button>`;
           actions += moreMenu(menu);
         } else if (goal.status === 'active' && !upcoming) {
-          actions = `<button class="btn warning" type="button" onclick="markGoalDone('${goal.id}')">✓ I completed this goal</button>`;
+          actions = goal.require_photo
+            ? `<button class="btn warning" type="button" onclick="openPhotoModal('goal', '${goal.id}')">📷 Complete with a photo</button>`
+            : `<button class="btn warning" type="button" onclick="markGoalDone('${goal.id}')">✓ I completed this goal</button>`;
         }
 
         const metaBits = [
           isParent ? 'For ' + childName(goal.child_id) : '',
           repeatLabel(goal.recurring_days).trim(),
+          (goal.rotation_child_ids || []).length > 1
+            ? (isParent ? 'Taking turns: ' + goal.rotation_child_ids.map((id) => childName(id)).join(' \u2192 ') + '.' : 'Taking turns with your siblings.')
+            : '',
+          goal.require_photo ? 'Photo needed.' : '',
           goal.details || ''
         ].filter(Boolean).map(esc).join(' ');
 
@@ -1097,7 +1118,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
               <span class="pill ${goal.status === 'completed' ? 'green' : tone === 'bad' ? 'amber' : ''}">${goalStatusLabel(goal)}</span>
             </div>
             <div class="progress ${tone}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(fill)}"><span style="width:${fill}%"></span></div>
-            <div class="progress-meta"><span>${label}</span><span>Due ${prettyDate(goal.due_date)}</span></div>
+            <div class="progress-meta"><span>${label}</span><span>Due ${prettyDate(goal.due_date)}${goal.due_time ? ' at ' + fmtTime(goal.due_time) : ''}</span></div>
             ${goal.denied_at && goal.status === 'active' ? `<div class="denied-note">Sent back by your parent${goal.deny_reason ? ': ' + esc(goal.deny_reason) : '.'}</div>` : ''}
             <div class="goal-consequence">If missed: ${esc(goal.consequence)}${goal.consequence_days ? ' (for ' + goal.consequence_days + (goal.consequence_days === 1 ? ' day' : ' days') + ')' : ''}</div>
             ${actions ? `<div class="row">${actions}</div>` : ''}
@@ -1260,6 +1281,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
           <div class="row-main">
             <div class="row-title">${esc(childName(request.child_id))} finished: ${esc(request.challenge_name)}</div>
             <div class="row-meta">Challenge${challenge ? ' · ' + challenge.points + ' points' : ''}</div>
+            ${proofBlock(request)}
           </div>
           <div class="row-actions">
             ${approveIconBtn(`approveChallenge('${request.challenge_id}')`)}
@@ -1329,7 +1351,8 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
         <article class="row-item can-deny">
           <div class="row-main">
             <div class="row-title">${esc(childName(goal.child_id))} completed: ${esc(goal.name)}</div>
-            <div class="row-meta">Goal · due ${prettyDate(goal.due_date)}</div>
+            <div class="row-meta">Goal · due ${prettyDate(goal.due_date)}${goal.due_time ? ' at ' + fmtTime(goal.due_time) : ''}</div>
+            ${proofBlock(goal)}
           </div>
           <div class="row-actions">${d.buttons}</div>
           ${d.boxes}
@@ -1347,20 +1370,25 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
     async function denyRequest(requestId) {
       if (session.role !== 'parent') return;
       const reason = document.getElementById('deny-reason-req-' + requestId).value.trim();
-      const res = await db.from('completion_requests').update({ status: 'denied', deny_reason: reason || null }).eq('id', requestId);
+      const photo = (family.requests.find((r) => r.id === requestId) || {}).photo_path;
+      const res = await db.from('completion_requests').update({ status: 'denied', deny_reason: reason || null, photo_path: null, ai_verdict: null, ai_note: null }).eq('id', requestId);
       if (!check(res)) return;
+      await discardPhotos([photo]);
       await refreshAndRender();
     }
 
     async function denyGoal(goalId, key) {
       if (session.role !== 'parent') return;
       const reason = document.getElementById('deny-reason-goal-' + key).value.trim();
+      const photo = (family.goals.find((g) => g.id === goalId) || {}).photo_path;
       const res = await db.from('goals').update({
         status: 'active',
         deny_reason: reason || null,
-        denied_at: new Date().toISOString()
+        denied_at: new Date().toISOString(),
+        photo_path: null, ai_verdict: null, ai_note: null
       }).eq('id', goalId);
       if (!check(res)) return;
+      await discardPhotos([photo]);
       await refreshAndRender();
     }
 
@@ -1381,6 +1409,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
         alert(error.message);
         return;
       }
+      await discardPhotos([goal.photo_path]);
       await refreshAndRender();
       if (data) showToast('Approved with a +' + amount + ' tip: ' + goal.name, data);
     }
@@ -1653,7 +1682,8 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
         name: $('#challengeName').value.trim(),
         points: Number($('#challengePoints').value),
         details: $('#challengeDetails').value.trim(),
-        recurring_days: days
+        recurring_days: days,
+        require_photo: $('#challengeRequirePhoto').checked
       };
 
       if (editing?.type === 'challenge') {
@@ -1692,12 +1722,15 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
         details: $('#goalDetails').value.trim(),
         consequence: getGoalConsequence(),
         consequence_days: $('#goalConsequenceDays').value ? Math.max(1, Math.round(Number($('#goalConsequenceDays').value))) : null,
-        recurring_days: days
+        recurring_days: days,
+        due_time: $('#goalDueTime').value || null,
+        require_photo: $('#goalRequirePhoto').checked
       };
+      const rotate = $('#goalRotate').checked && days.length > 0 && childIds.length >= 2;
 
       if (editing?.type === 'goal') {
-        if (childIds.length !== 1) {
-          setMessage('#goalError', 'Pick exactly one child when editing.');
+        if (!rotate && childIds.length !== 1) {
+          setMessage('#goalError', 'Pick exactly one child when editing, or tick "Take turns" to rotate between several.');
           return;
         }
         const existing = family.goals.find((g) => g.id === editing.id);
@@ -1705,20 +1738,25 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
         const dueDate = days.length
           ? (sameDays ? existing.due_date : firstOccurrence(days))
           : $('#goalDueDate').value;
-        await db.from('goals').update({ ...fields, child_id: childIds[0], due_date: dueDate }).eq('id', editing.id);
+        const owner = rotate ? (childIds.includes(existing?.child_id) ? existing.child_id : childIds[0]) : childIds[0];
+        await db.from('goals').update({ ...fields, child_id: owner, rotation_child_ids: rotate ? childIds : [], due_date: dueDate }).eq('id', editing.id);
         cancelEdit();
         await refreshAndRender();
         return;
       }
 
       const dueDate = days.length ? firstOccurrence(days) : $('#goalDueDate').value;
-      const { error } = await db.from('goals').insert(childIds.map((id) => ({
-        family_id: family.id,
-        child_id: id,
-        due_date: dueDate,
-        status: 'active',
-        ...fields
-      })));
+      // Taking turns: one goal that moves between the children. Otherwise one goal each.
+      const rows = rotate
+        ? [{ family_id: family.id, child_id: childIds[0], rotation_child_ids: childIds, due_date: dueDate, status: 'active', ...fields }]
+        : childIds.map((id) => ({
+            family_id: family.id,
+            child_id: id,
+            due_date: dueDate,
+            status: 'active',
+            ...fields
+          }));
+      const { error } = await db.from('goals').insert(rows);
       if (error) {
         setMessage('#goalError', error.message);
         return;
@@ -1726,6 +1764,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
       event.target.reset();
       $('#goalDueDate').value = nextDate(7);
       updateGoalDueState();
+      updateGoalRotateState();
       updateGoalConsequenceUI();
       closeForm('goalForm');
       await refreshAndRender();
