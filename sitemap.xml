@@ -3,4 +3,13 @@
   <url>
     <loc>https://parental-rewards.vercel.app/</loc>
   </url>
+  <url>
+    <loc>https://parental-rewards.vercel.app/privacy</loc>
+  </url>
+  <url>
+    <loc>https://parental-rewards.vercel.app/terms</loc>
+  </url>
+  <url>
+    <loc>https://parental-rewards.vercel.app/support</loc>
+  </url>
 </urlset>
