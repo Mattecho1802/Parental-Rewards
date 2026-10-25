@@ -1,0 +1,29 @@
+:root { color-scheme: light dark; --ink:#18202f; --muted:#667085; --line:#d9e1ea; --page:#f5f7fa; --panel:#fff; --blue:#2563eb; --soft:#eef2f7; }
+@media (prefers-color-scheme: dark) { :root { --ink:#e8edf5; --muted:#a3adbd; --line:#2b3547; --page:#0f1623; --panel:#172033; --blue:#7aa7ff; --soft:#1e2a40; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 48px; }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0 16px; flex-wrap: wrap; }
+.top a.back { font-weight: 700; color: var(--blue); text-decoration: none; }
+.top nav { display: flex; gap: 14px; font-size: 14px; flex-wrap: wrap; }
+.top nav a { color: var(--muted); text-decoration: none; }
+.top nav a[aria-current="page"] { color: var(--ink); font-weight: 700; }
+article { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 24px 22px; }
+h1 { margin: 0 0 4px; font-size: 28px; line-height: 1.2; }
+h2 { margin: 28px 0 6px; font-size: 20px; }
+h3 { margin: 18px 0 4px; font-size: 16px; }
+p, li { margin: 8px 0; }
+ul { padding-left: 22px; }
+a { color: var(--blue); }
+.updated { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+.lead { font-size: 18px; }
+table { border-collapse: collapse; width: 100%; font-size: 15px; margin: 10px 0; }
+th, td { text-align: left; vertical-align: top; border: 1px solid var(--line); padding: 8px 10px; }
+th { background: var(--soft); }
+details { border: 1px solid var(--line); border-radius: 8px; padding: 2px 14px; margin: 8px 0; }
+summary { cursor: pointer; font-weight: 700; padding: 10px 0; }
+.card { background: var(--soft); border-radius: 10px; padding: 14px 16px; margin: 14px 0; }
+.btn { display: inline-block; background: var(--blue); color: #fff; font-weight: 700; padding: 10px 16px; border-radius: 10px; text-decoration: none; }
+@media (prefers-color-scheme: dark) { .btn { color: #0f1623; } }
+footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 20px; }
+@media (max-width: 520px) { article { padding: 18px 14px; } th, td { padding: 6px; font-size: 14px; } }
