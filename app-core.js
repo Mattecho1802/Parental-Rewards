@@ -785,11 +785,16 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
       $('#mobileSettingsLabel').textContent = isParent ? 'Settings' : 'Profile';
 
       $$('.parent-only').forEach((item) => item.classList.toggle('hidden', !isParent));
+      $$('.child-only').forEach((item) => item.classList.toggle('hidden', isParent));
+      if (isParent) {
+        const me = (family.parents || []).find((m) => m.user_id === session.userId);
+        $('#accountEmail').textContent = (me && me.email) || '';
+      }
 
       // One page, no tabs: show the sections in order of importance for who is signed in
       const order = isParent
-        ? { widgetsSection: -3, overviewSection: -2, todaySection: -1, attentionSection: 0, childrenSection: 1, goalsSection: 2, calendarSection: 3, activitiesSection: 4, feedbackSection: 5, consequenceSection: 6, challengesSection: 7, rewardsSection: 8, aiSummarySection: 9, summarySection: 10, historySection: 11, settingsSection: 12, themeSection: 13, widgetSettings: 14 }
-        : { widgetsSection: -2, todaySection: -1, feedbackSection: 0, consequenceSection: 1, goalsSection: 2, calendarSection: 3, activitiesSection: 4, challengesSection: 5, rewardsSection: 6, historySection: 7, themeSection: 8, widgetSettings: 9 };
+        ? { widgetsSection: -3, overviewSection: -2, todaySection: -1, attentionSection: 0, childrenSection: 1, goalsSection: 2, calendarSection: 3, activitiesSection: 4, feedbackSection: 5, consequenceSection: 6, challengesSection: 7, rewardsSection: 8, aiSummarySection: 9, summarySection: 10, historySection: 11, settingsSection: 12, themeSection: 13, widgetSettings: 14, accountSection: 15 }
+        : { widgetsSection: -2, todaySection: -1, feedbackSection: 0, consequenceSection: 1, goalsSection: 2, calendarSection: 3, activitiesSection: 4, challengesSection: 5, rewardsSection: 6, historySection: 7, themeSection: 8, widgetSettings: 9, accountSection: 10 };
       Object.entries(order).forEach(([id, position]) => { $('#' + id).style.order = position; });
       // Children have no Activity page, so their history sits on their Profile page
       $('#historySection').dataset.view = isParent ? 'activity' : 'settings';
@@ -1847,8 +1852,12 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
       const kid = family.children.find((c) => c.id === childId);
       if (!kid) return;
       if (!confirm('Remove ' + kid.name + '? This also deletes their points, challenges, goals and requests. This cannot be undone.')) return;
+      // Their proof photos live in storage, so remove those too
+      const photoPaths = [...(family.requests || []), ...(family.goals || [])]
+        .filter((x) => x.child_id === childId && x.photo_path).map((x) => x.photo_path);
       const res = await db.rpc('remove_child', { p_child_id: childId });
       if (!check(res)) return;
+      await discardPhotos(photoPaths);
       await refreshAndRender();
     }
 
