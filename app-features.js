@@ -915,6 +915,191 @@ async function ignoreConsequence(goalId) {
       $('#modal').classList.add('hidden');
     }
 
+    // ---------- account, help and legal ----------
+    function appCfg() { return window.APP_CONFIG || {}; }
+    function appLabel() { return appCfg().appName || 'HappyHome'; }
+    const closeBtn = '<button class="btn secondary" type="button" onclick="closeModal()">Close</button>';
+
+    function openAboutApp() {
+      const c = appCfg();
+      showModal('About ' + appLabel(), `
+        <p>${esc(appLabel())} helps families set goals, challenges and rewards. Children see what they are working towards, and parents can cheer them on.</p>
+        ${kv('Version', c.appVersion || '1.0.0')}
+        ${kv('Made by', c.operatorName)}
+        <p class="meta" style="margin-top:12px">No adverts. No tracking. Your family's information is never sold.</p>
+        <div class="legal-links start" style="margin-top:8px"><a href="privacy" target="_blank" rel="noopener">Privacy Policy</a><a href="terms" target="_blank" rel="noopener">Terms</a><a href="support" target="_blank" rel="noopener">Help &amp; FAQ</a></div>
+      `, closeBtn);
+    }
+
+    function openContactSupport() {
+      const c = appCfg();
+      const info = appLabel() + ' ' + (c.appVersion || '') + (inNativeApp() ? ' (phone app)' : ' (website)') + '\n' + navigator.userAgent;
+      const link = c.contactEmail
+        ? 'mailto:' + c.contactEmail + '?subject=' + encodeURIComponent(appLabel() + ' support') +
+          '&body=' + encodeURIComponent('Tell us what happened:\n\n\n\n---\nPlease leave this part in, it helps us find the problem:\n' + info)
+        : '';
+      showModal('Contact us', `
+        <p>Found a problem, got an idea, or need help with your family's data? Send us an email and we will reply as soon as we can.</p>
+        ${link
+          ? `<p><a class="btn" href="${esc(link)}">Email ${esc(c.contactEmail)}</a></p>`
+          : '<p class="meta">Contact details have not been set up yet.</p>'}
+        <p class="meta">Please do not email passwords. We will never ask for one.</p>
+        <p><a href="support" target="_blank" rel="noopener">Help &amp; FAQ</a></p>
+      `, closeBtn);
+    }
+
+    function openChangePassword() {
+      showModal('Change password', `
+        <div class="form-grid">
+          <label>New password
+            <input id="newPw1" type="password" minlength="8" autocomplete="new-password" placeholder="At least 8 characters" />
+          </label>
+          <label>Repeat it
+            <input id="newPw2" type="password" minlength="8" autocomplete="new-password" />
+          </label>
+          <p id="pwMsg" class="error"></p>
+        </div>
+      `, `<button class="btn" type="button" id="pwSaveBtn" onclick="saveNewPassword()">Save password</button>
+          <button class="btn secondary" type="button" onclick="closeModal()">Cancel</button>`);
+    }
+
+    async function saveNewPassword() {
+      const a = $('#newPw1').value;
+      const b = $('#newPw2').value;
+      setMessage('#pwMsg', '');
+      if (a.length < 8) { setMessage('#pwMsg', 'Use at least 8 characters.'); return; }
+      if (a !== b) { setMessage('#pwMsg', 'The two passwords are different.'); return; }
+      const btn = $('#pwSaveBtn');
+      btn.disabled = true;
+      const { error } = await db.auth.updateUser({ password: a });
+      btn.disabled = false;
+      if (error) { setMessage('#pwMsg', error.message); return; }
+      showModal('Password changed', '<p>Your new password is saved. Use it next time you sign in.</p>', closeBtn);
+    }
+
+    // ----- download a copy of the family's data -----
+    let exportJson = '';
+
+    function buildFamilyExport() {
+      const f = family;
+      const names = {};
+      f.children.forEach((c) => { names[c.id] = c.name; });
+      const strip = (rows) => (rows || []).map((r) => {
+        const o = { ...r };
+        delete o.photo_path;
+        delete o.family_id;
+        if (o.child_id && names[o.child_id]) o.child_name = names[o.child_id];
+        return o;
+      });
+      return {
+        exported_at: new Date().toISOString(),
+        app: appLabel(),
+        note: 'Everything saved for this family. Points history and approvals show the most recent entries only.',
+        family: { name: f.family_name, child_sign_in_code: f.family_code },
+        parents: (f.parents || []).map((m) => ({ name: m.name, email: m.email, role: m.role })),
+        children: strip(f.children),
+        goals: strip(f.goals),
+        challenges: strip(f.challenges),
+        challenge_completion_requests: strip(f.requests),
+        rewards: strip(f.rewards),
+        points_history: strip(f.log),
+        consequences: strip(f.consequences),
+        approvals: strip(f.approvals),
+        feedback_notes: strip(f.notes),
+        activities: strip(f.activities),
+        weekly_reports: strip(f.summaries)
+      };
+    }
+
+    function openExportData() {
+      exportJson = JSON.stringify(buildFamilyExport(), null, 2);
+      const phone = inNativeApp();
+      showModal("Download my family's data", `
+        <p>This is a copy of everything saved for your family, as a plain text (JSON) file. Proof photos are not included.</p>
+        ${phone ? `<textarea readonly rows="8" style="width:100%;font-family:monospace;font-size:12px">${esc(exportJson)}</textarea>` : ''}
+        <p id="exportMsg" class="notice"></p>
+      `, `${phone ? '' : '<button class="btn" type="button" onclick="downloadFamilyExport()">Download file</button>'}
+          <button class="btn secondary" type="button" onclick="copyFamilyExport()">Copy to clipboard</button>
+          ${closeBtn}`);
+    }
+
+    function downloadFamilyExport() {
+      const blob = new Blob([exportJson], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = appLabel().toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-family-data.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      setMessage('#exportMsg', 'Downloaded.');
+    }
+
+    async function copyFamilyExport() {
+      try {
+        await navigator.clipboard.writeText(exportJson);
+        setMessage('#exportMsg', 'Copied.');
+      } catch (e) {
+        setMessage('#exportMsg', 'Could not copy. Select the text and copy it by hand.');
+      }
+    }
+
+    // ----- delete my account -----
+    function openDeleteAccount() {
+      const isOwner = !!session && session.role === 'parent' && session.memberRole === 'owner';
+      const others = isOwner ? (family?.parents || []).filter((m) => m.user_id !== session.userId).length : 0;
+      let what;
+      if (!session || session.role !== 'parent') {
+        what = '<p>This deletes your login. You have not set up a family yet, so there is nothing else to remove.</p>';
+      } else if (isOwner) {
+        what = `<p><strong>You are the account owner, so this deletes the whole family:</strong> every child, goal, challenge, reward, note, activity, report and photo.${others ? ` The ${others === 1 ? 'other parent' : others + ' other parents'} will lose access too.` : ''} Children will no longer be able to sign in.</p>
+                <p>Want a copy first? Close this and use "Download my family's data".</p>`;
+      } else {
+        what = '<p>This deletes your login and removes you from the family. The family and its children are not affected.</p>';
+      }
+      showModal('Delete account', `
+        ${what}
+        <p><strong>This cannot be undone.</strong></p>
+        <div class="form-grid">
+          <label>Your password
+            <input id="delPw" type="password" autocomplete="current-password" oninput="delAcctCheck()" />
+          </label>
+          <label>Type DELETE to confirm
+            <input id="delWord" autocomplete="off" autocapitalize="characters" oninput="delAcctCheck()" />
+          </label>
+          <p id="delMsg" class="error"></p>
+        </div>
+      `, `<button class="btn danger" type="button" id="delAcctBtn" disabled onclick="confirmDeleteAccount()">Delete forever</button>
+          <button class="btn secondary" type="button" onclick="closeModal()">Cancel</button>`);
+    }
+
+    function delAcctCheck() {
+      $('#delAcctBtn').disabled = !($('#delPw').value && $('#delWord').value.trim().toUpperCase() === 'DELETE');
+    }
+
+    async function confirmDeleteAccount() {
+      const btn = $('#delAcctBtn');
+      setMessage('#delMsg', '');
+      btn.disabled = true;
+      btn.textContent = 'Deleting...';
+      try { await removePushFromServer(); } catch (e) { /* the server clears these anyway */ }
+      const { data, error } = await db.functions.invoke('delete-account', { body: { password: $('#delPw').value } });
+      if (error || !data || data.error || !data.ok) {
+        setMessage('#delMsg', (data && data.error) ||
+          'Could not reach the delete-account function. Check it is deployed with exactly that name.');
+        btn.textContent = 'Delete forever';
+        btn.disabled = false;
+        return;
+      }
+      try { await db.auth.signOut({ scope: 'local' }); } catch (e) { /* the login is already gone */ }
+      try { localStorage.clear(); } catch (e) { /* ignore */ }
+      resetState();
+      render();
+      closeModal();
+      setMessage('#parentNotice', 'Your account has been deleted.');
+    }
+
     function kv(label, value) {
       return value ? `<div class="kv"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>` : '';
     }
@@ -2398,3 +2583,4 @@ async function ignoreConsequence(goalId) {
       const { data } = await db.auth.getSession();
       if (booting) await startFromAuth(data.session);
     }, 2000);
+  
