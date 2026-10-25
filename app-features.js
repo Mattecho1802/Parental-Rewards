@@ -511,10 +511,44 @@ async function ignoreConsequence(goalId) {
       return { value: '', sub: '', body: '' };
     }
 
+    // ---------- phone home-screen widget (HappyHome app only) ----------
+    // Sends the first four widgets from the customise list to the phone, which draws them.
+    function plainText(html) {
+      const el = document.createElement('div');
+      el.innerHTML = String(html || '');
+      return (el.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function pushWidgetsToPhone(p) {
+      const bridge = inNativeApp() ? nativePlugin('WidgetBridge') : null;
+      if (!bridge || !session || !family) return;
+      try {
+        const cards = p.items.slice(0, 4).map((item) => {
+          const w = WIDGETS.find((x) => x.id === item.id);
+          const d = widgetData(item);
+          const holder = document.createElement('div');
+          holder.innerHTML = d.body || '';
+          const items = Array.from(holder.querySelectorAll('li')).map((li) => (li.textContent || '').replace(/\s+/g, ' ').trim());
+          if (!items.length && holder.textContent.trim()) items.push(holder.textContent.replace(/\s+/g, ' ').trim());
+          return { title: w.name, value: plainText(d.value), sub: plainText(d.sub), lines: items.filter(Boolean).slice(0, 3) };
+        });
+        const who = session.role === 'parent' ? (session.parentName || 'Parent') : (activeChild() ? activeChild().name : '');
+        bridge.update({ json: JSON.stringify({ updated: Date.now(), who, cards }) }).catch(() => {});
+      } catch (e) { /* the widget just keeps its last picture */ }
+    }
+
+    function clearPhoneWidgets() {
+      const bridge = inNativeApp() ? nativePlugin('WidgetBridge') : null;
+      if (bridge) { try { bridge.clear().catch(() => {}); } catch (e) { /* ignore */ } }
+    }
+
     function renderWidgets() {
       const section = $('#widgetsSection');
       if (!section || !session || !family) return;
       const p = loadWidgetPrefs();
+      pushWidgetsToPhone(p);
+      const note = $('#phoneWidgetNote');
+      if (note) note.classList.toggle('hidden', !inNativeApp());
       section.classList.toggle('hidden', !p.enabled);
       const toggle = $('#widgetsToggle');
       if (toggle) toggle.checked = p.enabled;
@@ -2209,6 +2243,8 @@ async function ignoreConsequence(goalId) {
     $('#saveFamilyNameBtn').addEventListener('click', renameFamily);
     $('#pushBtn').addEventListener('click', togglePush);
     registerServiceWorker();
+    // Inside the phone app, start listening for notification taps straight away
+    if (inNativeApp()) setupNativePush();
     // A notification tapped while the app is already open
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', (event) => {
