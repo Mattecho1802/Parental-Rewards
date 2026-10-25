@@ -85,6 +85,163 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
     let swReg = null;
     let pushIsOn = false;
 
+    // ---------- the HappyHome phone app (Capacitor) ----------
+    // Inside the app these use the phone's own notification system (Firebase).
+    // In a normal browser none of this runs and the web notifications below are used.
+    const FCM_KEY = 'parentalRewardsFcmToken';
+    let nativePushSetup = null;
+    let fcmWaiter = null;
+    let pendingNotificationAction = null;
+
+    function inNativeApp() {
+      try { return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); } catch (e) { return false; }
+    }
+
+    function nativePlugin(name) {
+      try { return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins[name]) || null; } catch (e) { return null; }
+    }
+
+    function getFcmToken() {
+      try { return localStorage.getItem(FCM_KEY) || ''; } catch (e) { return ''; }
+    }
+
+    // The same shape the website's own subscriptions have, so the same server functions store it
+    function fcmSub(token) {
+      return { toJSON: () => ({ endpoint: 'fcm:' + token, keys: { p256dh: 'fcm', auth: 'fcm' } }) };
+    }
+
+    // A notification was tapped: go where it points
+    function openFromNotification(url) {
+      const q = new URLSearchParams(String(url || '').split('?')[1] || '');
+      const apply = () => {
+        if (q.get('tab') === 'requests') jumpTo('attentionSection');
+        else if (q.get('open') === 'summary') openSummary();
+      };
+      if (session && family) setTimeout(apply, 200);
+      else pendingNotificationAction = apply;
+    }
+
+    function setupNativePush() {
+      const PN = nativePlugin('PushNotifications');
+      if (!PN) return Promise.resolve(false);
+      if (nativePushSetup) return nativePushSetup;
+      nativePushSetup = (async () => {
+        await PN.addListener('registration', async (t) => {
+          const token = t && t.value;
+          if (!token) return;
+          try { localStorage.setItem(FCM_KEY, token); } catch (e) { /* ignore */ }
+          if (session) { try { await savePushToServer(fcmSub(token)); } catch (e) { /* retried next time */ } }
+          if (fcmWaiter) { fcmWaiter.resolve(token); fcmWaiter = null; }
+        });
+        await PN.addListener('registrationError', (e) => {
+          if (fcmWaiter) {
+            fcmWaiter.reject(new Error((e && e.error) || 'The phone could not set up notifications.'));
+            fcmWaiter = null;
+          }
+        });
+        // App open: the phone does not show a banner, so refresh and show a small message instead
+        await PN.addListener('pushNotificationReceived', (n) => {
+          if (session && family) {
+            refreshAndRender();
+            showToast(((n && n.title) ? n.title + ': ' : '') + ((n && n.body) || ''), null);
+          }
+        });
+        await PN.addListener('pushNotificationActionPerformed', (a) => {
+          const data = (a && a.notification && a.notification.data) || {};
+          openFromNotification(data.url);
+        });
+        return true;
+      })().catch((e) => { nativePushSetup = null; console.warn('native push setup failed', e); return false; });
+      return nativePushSetup;
+    }
+
+    function registerNativePush() {
+      const PN = nativePlugin('PushNotifications');
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          fcmWaiter = null;
+          reject(new Error('The phone did not return a notification ID. Check the phone is online and that google-services.json is in the app.'));
+        }, 20000);
+        fcmWaiter = { resolve: (t) => { clearTimeout(timer); resolve(t); }, reject: (e) => { clearTimeout(timer); reject(e); } };
+        PN.register().catch((e) => { clearTimeout(timer); fcmWaiter = null; reject(e); });
+      });
+    }
+
+    async function updateNativePushUI(btn, status) {
+      const PN = nativePlugin('PushNotifications');
+      if (!PN) {
+        btn.classList.add('hidden');
+        status.textContent = 'Notifications need a newer build of the app. Rebuild and reinstall it (see the app guide).';
+        return;
+      }
+      setupNativePush();
+      let perm = 'prompt';
+      try { perm = (await PN.checkPermissions()).receive; } catch (e) { /* ask when the button is pressed */ }
+      if (perm === 'denied') {
+        btn.classList.add('hidden');
+        status.textContent = 'Notifications are blocked. Open your phone Settings, then Apps, HappyHome, Notifications, and allow them.';
+        return;
+      }
+      btn.classList.remove('hidden');
+      pushIsOn = perm === 'granted' && !!getFcmToken();
+      btn.textContent = pushIsOn ? 'Turn off notifications' : 'Turn on notifications';
+      status.textContent = pushIsOn
+        ? 'Notifications are on for this phone.'
+        : session.role === 'parent'
+          ? 'Get a notification when a child finishes something.'
+          : 'Get reminders before things are due, and a notification when your parent sends something back.';
+    }
+
+    async function toggleNativePush() {
+      const status = $('#pushStatus');
+      const say = (text) => { status.textContent = text; };
+      const PN = nativePlugin('PushNotifications');
+      try {
+        if (!PN) throw new Error('This build of the app has no notification support.');
+        await setupNativePush();
+
+        if (pushIsOn) {
+          const token = getFcmToken();
+          if (token) await removePushOnServer('fcm:' + token);
+          try { await PN.unregister(); } catch (e) { /* ignore */ }
+          try { localStorage.removeItem(FCM_KEY); } catch (e) { /* ignore */ }
+          await updatePushUI();
+          return;
+        }
+
+        say('Waiting for you to allow notifications...');
+        let perm = await PN.checkPermissions();
+        if (perm.receive !== 'granted') perm = await PN.requestPermissions();
+        if (perm.receive !== 'granted') {
+          await updatePushUI();
+          if (perm.receive !== 'denied') say('Notifications were not allowed. Tap the button to try again.');
+          return;
+        }
+
+        say('Setting up this phone...');
+        const token = await registerNativePush();
+        const res = await savePushToServer(fcmSub(token));
+        if (res.error) throw new Error(res.error.message);
+        await updatePushUI();
+      } catch (e) {
+        console.error(e);
+        const message = 'Could not turn on notifications: ' + (e && e.message ? e.message : e);
+        say(message);
+        alert(message);
+      }
+    }
+
+    // Signed in on this phone: make sure the stored phone ID belongs to whoever is signed in
+    async function syncNativePush() {
+      try {
+        const PN = nativePlugin('PushNotifications');
+        if (!PN || !getFcmToken()) return;
+        await setupNativePush();
+        const perm = await PN.checkPermissions();
+        if (perm.receive === 'granted') await PN.register(); // answers with the 'registration' event, which saves it
+      } catch (e) { /* not important */ }
+    }
+
     async function registerServiceWorker() {
       if (!('serviceWorker' in navigator)) return;
       try {
@@ -101,6 +258,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
     }
 
     function pushSupported() {
+      if (inNativeApp()) return !!nativePlugin('PushNotifications');
       return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
     }
 
@@ -115,6 +273,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
       const btn = $('#pushBtn');
       const status = $('#pushStatus');
       if (!btn || !status) return;
+      if (inNativeApp()) { await updateNativePushUI(btn, status); return; }
 
       if (!pushSupported()) {
         btn.classList.add('hidden');
@@ -148,6 +307,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
     }
 
     async function togglePush() {
+      if (inNativeApp()) { await toggleNativePush(); return; }
       const status = $('#pushStatus');
       const say = (text) => { status.textContent = text; };
 
@@ -217,6 +377,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
     }
 
     async function syncPushSubscription() {
+      if (inNativeApp()) { await syncNativePush(); return; }
       try {
         const sub = await currentPushSubscription();
         if (!sub) return;
@@ -226,6 +387,13 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
     }
 
     async function removePushFromServer() {
+      if (inNativeApp()) {
+        try {
+          const token = getFcmToken();
+          if (token) await removePushOnServer('fcm:' + token);
+        } catch (e) { /* not important */ }
+        return;
+      }
       try {
         const sub = await currentPushSubscription();
         if (sub) await removePushOnServer(sub.endpoint);
@@ -475,6 +643,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
     }
 
     function resetState() {
+      clearPhoneWidgets();
       stopRealtime();
       session = null;
       family = null;
@@ -650,6 +819,11 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
       renderToday();
       renderWidgets();
       updatePushUI();
+      if (pendingNotificationAction) {
+        const run = pendingNotificationAction;
+        pendingNotificationAction = null;
+        setTimeout(run, 300);
+      }
     }
 
     function renderChildren() {
