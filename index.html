@@ -87,6 +87,10 @@
           <label>Password
             <input id="createParentPassword" type="password" required minlength="8" placeholder="At least 8 characters" autocomplete="new-password" />
           </label>
+          <label class="consent">
+            <input type="checkbox" id="createConsent" required />
+            <span>I am 18 or over, I agree to the <a href="terms" target="_blank" rel="noopener">Terms</a> and <a href="privacy" target="_blank" rel="noopener">Privacy Policy</a>, and I am the parent or guardian of any child I add.</span>
+          </label>
           <button class="btn" type="submit">Create account</button>
           <p class="meta">After this you will create your family, or join one with an invite code.</p>
           <p id="createError" class="error"></p>
@@ -112,6 +116,7 @@
           <button class="btn" type="submit">Save password</button>
           <p id="recoverError" class="error"></p>
         </form>
+        <p class="legal-links"><a href="privacy" target="_blank" rel="noopener">Privacy</a><a href="terms" target="_blank" rel="noopener">Terms</a><a href="support" target="_blank" rel="noopener">Help &amp; contact</a></p>
       </div>
     </div>
   </section>
@@ -165,6 +170,8 @@
         </form>
 
         <button class="btn secondary" type="button" onclick="signOut()">Sign out</button>
+        <button class="btn secondary" type="button" onclick="openDeleteAccount()">Delete this account</button>
+        <p class="legal-links"><a href="privacy" target="_blank" rel="noopener">Privacy</a><a href="terms" target="_blank" rel="noopener">Terms</a><a href="support" target="_blank" rel="noopener">Help &amp; contact</a></p>
       </div>
     </div>
   </section>
@@ -665,6 +672,28 @@
           <p class="meta hidden" id="phoneWidgetNote">In the HappyHome app: press and hold an empty spot on your phone's home screen, tap Widgets, and add HappyHome. The home-screen widget shows the first four widgets from this list, and updates whenever you open the app.</p>
           <button class="btn secondary" type="button" onclick="openWidgetEditor()">Customise widgets</button>
           <button class="btn secondary" type="button" onclick="startTutorial()">Show the tutorial again</button>
+        </div>
+      </details>
+      <details id="accountSection" class="settings" data-view="settings">
+        <summary>Account, help &amp; legal</summary>
+        <div class="form-grid" style="margin-top:12px">
+          <div class="parent-only form-grid">
+            <p class="meta">Signed in as <strong id="accountEmail"></strong></p>
+            <button class="btn secondary" type="button" onclick="openChangePassword()">Change password</button>
+            <button class="btn secondary" type="button" onclick="openExportData()">Download my family's data</button>
+          </div>
+          <button class="btn secondary" type="button" onclick="openAboutApp()">About</button>
+          <button class="btn secondary" type="button" onclick="openContactSupport()">Contact us / report a problem</button>
+          <div class="legal-links start"><a href="support" target="_blank" rel="noopener">Help &amp; FAQ</a><a href="privacy" target="_blank" rel="noopener">Privacy Policy</a><a href="terms" target="_blank" rel="noopener">Terms</a></div>
+          <div class="parent-only form-grid danger-zone">
+            <h3>Delete account</h3>
+            <p class="meta">Permanently deletes your account and, if you are the account owner, the whole family and everything in it.</p>
+            <button class="btn danger" type="button" onclick="openDeleteAccount()">Delete my account</button>
+          </div>
+          <div class="child-only danger-zone">
+            <h3>Your profile</h3>
+            <p class="meta">To remove your profile and everything saved on it, ask a parent. They can do it from their Family section.</p>
+          </div>
         </div>
       </details>
     </main>
