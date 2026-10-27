@@ -651,7 +651,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
       needsOnboarding = false;
       activeTab = 'family';
       editing = null;
-      document.title = 'Parental Rewards';
+      document.title = 'HappyHome';
       setMobileView('home');
     }
 
@@ -1333,10 +1333,18 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
         </div>
       `;
 
-      list.innerHTML = banner + (open.length ? open.map(card).join('') : `<div class="empty">${filtering ? 'No goals match.' : 'No open goals right now.'}</div>`)
-        + (upcomingGoals.length ? `<details class="done-list"><summary>Upcoming (${upcomingGoals.length})</summary>${upcomingGoals.map(upcomingRow).join('')}</details>` : '')
-        + (done.length ? `<details class="done-list"><summary>Completed (${done.length})</summary>${done.map(doneRow).join('')}</details>` : '');
+      // Each group is a dropdown; remember which are open so refreshes don't close them
+      const group = (key, title, count, body) =>
+        `<details class="done-list${key === 'current' ? ' current-list' : ''}" ${goalGroupOpen[key] ? 'open' : ''} ontoggle="goalGroupToggle('${key}', this.open)"><summary>${title} (${count})</summary>${body}</details>`;
+      const currentBody = open.length ? open.map(card).join('') : `<div class="empty">${filtering ? 'No goals match.' : 'No open goals right now.'}</div>`;
+
+      list.innerHTML = banner + group('current', 'Current', open.length, currentBody)
+        + (upcomingGoals.length ? group('upcoming', 'Upcoming', upcomingGoals.length, upcomingGoals.map(upcomingRow).join('')) : '')
+        + (done.length ? group('done', 'Completed', done.length, done.map(doneRow).join('')) : '');
     }
+
+    const goalGroupOpen = { current: true, upcoming: false, done: false };
+    function goalGroupToggle(key, isOpen) { goalGroupOpen[key] = isOpen; }
 
     function renderRewards() {
       const list = $('#rewardList');
@@ -1614,7 +1622,7 @@ const SUPABASE_URL = 'https://oqthohrbgrdbnmzmytag.supabase.co';
       const navBadge = $('#navBadge');
       navBadge.textContent = badgeCount;
       navBadge.classList.toggle('hidden', !badgeCount);
-      document.title = badgeCount ? '(' + badgeCount + ') Parental Rewards' : 'Parental Rewards';
+      document.title = badgeCount ? '(' + badgeCount + ') HappyHome' : 'HappyHome';
     }
 
     function renderRequests() {
