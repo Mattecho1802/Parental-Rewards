@@ -656,7 +656,7 @@ async function ignoreConsequence(goalId) {
     // ---------- first-time tutorial ----------
     const TUTORIAL = {
       parent: [
-        { icon: '\u{1F44B}', title: 'Welcome to Parental Rewards', text: 'Set goals and challenges for your children, approve what they do, and let them earn rewards. Here is a quick tour. It takes about a minute.' },
+        { icon: '\u{1F44B}', title: 'Welcome to HappyHome', text: 'Set goals and challenges for your children, approve what they do, and let them earn rewards. Here is a quick tour. It takes about a minute.' },
         { icon: '\u{1F467}', title: 'Add your children', text: 'Add each child under Settings, then Children. They sign in on their own phone or tablet with your family code and their name. No password needed.', code: true },
         { icon: '\u{1F3AF}', title: 'Goals are the must-dos', text: 'Give a goal a due date (and a time if you want reminders 30 and 10 minutes before), pick repeat days for chores, and choose a consequence if it is missed. Tick two or more children to give each their own, or let them take turns.' },
         { icon: '\u{1F4F7}', title: 'Photo proof and AI', text: 'Ask for a photo when they finish. Turn on AI verification and a clear photo is approved straight away. If the AI is not sure, it comes to you instead.' },
