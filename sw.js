@@ -1,4 +1,4 @@
-// Service worker for Parental Rewards: shows push notifications.
+// Service worker for HappyHome: shows push notifications.
 // Must sit in the same folder as index.html.
 
 self.addEventListener('install', () => self.skipWaiting());
@@ -12,11 +12,11 @@ self.addEventListener('push', (event) => {
   try {
     data = event.data ? event.data.json() : {};
   } catch (e) {
-    data = { title: 'Parental Rewards', body: event.data ? event.data.text() : '' };
+    data = { title: 'HappyHome', body: event.data ? event.data.text() : '' };
   }
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Parental Rewards', {
+    self.registration.showNotification(data.title || 'HappyHome', {
       body: data.body || '',
       icon: 'apple-touch-icon.png',
       badge: 'favicon.png',
