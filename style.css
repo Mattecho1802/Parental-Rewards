@@ -746,3 +746,8 @@
     .child-only .meta { margin: 4px 0 0; }
     a.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
     .modal-card p { margin: 6px 0; }
+    .done-list.current-list { border-style: solid; }
+    .done-list.current-list > summary { color: var(--ink); }
+    .done-list.current-list[open] > summary { margin-bottom: 8px; }
+    .done-list.current-list > article, .done-list.current-list > .empty { margin-top: 8px; }
+    .brand-logo { width: 42px; height: 42px; border-radius: 10px; flex: none; display: block; }
